@@ -277,7 +277,8 @@
 
   function jobModal(job = null, onSaved) {
     const j = job || {};
-    const m = modal(`<h2>${job ? "Edit job" : "New job"}</h2>
+    const isEdit = !!(job && job.id);
+    const m = modal(`<h2>${isEdit ? "Edit job" : "New job"}</h2>
       <form id="jf" class="form-grid">
         <label class="field full"><span>Job title *</span><input name="title" type="text" required value="${esc(j.title || "")}" placeholder="e.g. Backyard composite deck"></label>
         <label class="field"><span>Client name</span><input name="client_name" type="text" value="${esc(j.client_name || "")}"></label>
@@ -289,13 +290,13 @@
         <label class="field"><span>Status</span><select name="status">${S.pricing.statuses.map((s) => `<option value="${s}" ${(j.status || "lead") === s ? "selected" : ""}>${STATUS_LABEL[s]}</option>`).join("")}</select></label>
         <label class="field full"><span>Notes</span><textarea name="notes" placeholder="Access, HOA, client preferences, scope notes…">${esc(j.notes || "")}</textarea></label>
       </form>
-      <div class="actions"><button class="btn" data-close>Cancel</button><button class="btn primary" id="save">${job ? "Save" : "Create job"}</button></div>`);
+      <div class="actions"><button class="btn" data-close>Cancel</button><button class="btn primary" id="save">${isEdit ? "Save" : "Create job"}</button></div>`);
     $("#save", m.el).onclick = async () => {
       const f = $("#jf", m.el);
       if (!f.reportValidity()) return;
       try {
-        const res = job ? await api(`/api/jobs/${job.id}`, { method: "PUT", body: formData(f) }) : await api("/api/jobs", { method: "POST", body: formData(f) });
-        m.close(); toast(job ? "Job saved" : "Job created", "ok");
+        const res = isEdit ? await api(`/api/jobs/${job.id}`, { method: "PUT", body: formData(f) }) : await api("/api/jobs", { method: "POST", body: formData(f) });
+        m.close(); toast(isEdit ? "Job saved" : "Job created", "ok");
         if (onSaved) onSaved(res.job); else go(`jobs/${res.job.id}`);
       } catch (err) { toast(err.message, "err"); }
     };
