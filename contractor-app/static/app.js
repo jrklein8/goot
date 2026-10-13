@@ -712,7 +712,7 @@
             <input class="price-input" type="number" step="any" data-mid="${x.db_id}" data-f="cost" value="${x.cost}"> <span class="dim" style="font-size:11px">/ ${esc(x.unit)}</span>
             <button class="btn ghost xs danger" data-delmat="${x.db_id}" title="Delete">${ICON.trash}</button></td></tr>`;
     const builtinRow = (x) => { const [sec, key] = x.id.split("."); const o = overrides[x.id]?.cost;
-      return `<tr><td class="star-cell">${starHtml(x.id)}</td><td class="editable" data-label="${x.id}" title="Double-click to rename">${esc(x.label)}</td><td class="right"><input class="price-input ${o !== undefined ? "changed" : ""}" type="number" step="any" data-path="${x.id}" data-f="cost" value="${x.cost}"> <span class="dim" style="font-size:11px">/ ${esc(x.unit)}</span></td></tr>`; };
+      return `<tr><td class="star-cell">${starHtml(x.id)}</td><td class="editable" data-label="${x.id}" title="Double-click to rename">${esc(x.label)}</td><td class="right"><input class="price-input ${o !== undefined ? "changed" : ""}" type="number" step="any" data-path="${x.id}" data-f="cost" value="${x.cost}"> <span class="dim editable" style="font-size:11px" data-unit="${x.id}" title="Double-click to change the unit">/ ${esc(x.unit)}</span></td></tr>`; };
     main().innerHTML = head("Price book", marketMetaLine(),
       `<button class="btn" id="market">${ICON.refresh} Update market prices</button><button class="btn" id="addmat">${ICON.plus} Add material</button><button class="btn" id="reset">Reset built-ins</button><button class="btn primary" id="save">Save changes</button>`) + `
       <div class="card pad-0 mb"><div class="card-head" style="padding:14px 18px 0"><h3>★ Favorites</h3></div>
@@ -726,30 +726,31 @@
             const id = `${sec}.${key}`;
             const starCell = Object.values(book[sec]).some((b) => "unit" in b) ? `<td class="star-cell">${"unit" in v ? starHtml(id) : ""}</td>` : "";
             return `<tr>${starCell}<td class="editable" data-label="${id}" title="Double-click to rename">${esc(v.label)}</td>
-              <td class="right">${fields.map((f) => `<span class="dim" style="font-size:11px;margin-left:8px">${fields.length > 1 ? f : ""}</span> <input class="price-input ${overrides[id]?.[f] !== undefined ? "changed" : ""}" type="number" step="any" data-path="${id}" data-f="${f}" value="${v[f]}">`).join("")}${"unit" in v ? ` <span class="dim" style="font-size:11px">/ ${esc(v.unit)}</span>` : ""}</td></tr>`; }).join("")}
+              <td class="right">${fields.map((f) => `<span class="dim" style="font-size:11px;margin-left:8px">${fields.length > 1 ? f : ""}</span> <input class="price-input ${overrides[id]?.[f] !== undefined ? "changed" : ""}" type="number" step="any" data-path="${id}" data-f="${f}" value="${v[f]}">`).join("")}${"unit" in v ? ` <span class="dim editable" style="font-size:11px" data-unit="${id}" title="Double-click to change the unit">/ ${esc(v.unit)}</span>` : ""}</td></tr>`; }).join("")}
           ${mine.filter((x) => x.section_key === sec).map(customRow).join("")}
           </tbody></table></div>`).join("")}</div>`;
     wireStars(document, () => render());
-    $$("td[data-label]").forEach((td) => (td.ondblclick = () => {
-      if (td.querySelector("input")) return;
-      const id = td.dataset.label, orig = td.textContent;
-      td.innerHTML = `<input type="text" value="${esc(orig)}" style="padding:4px 8px">`;
-      const inp = td.querySelector("input");
+    const inlineEdit = (el, id, field, orig, display) => {
+      if (el.querySelector("input")) return;
+      el.innerHTML = `<input type="text" value="${esc(orig)}" style="padding:4px 8px;${field === "unit" ? "width:70px" : ""}">`;
+      const inp = el.querySelector("input");
       inp.focus(); inp.select();
       let done = false;
       const finish = async (save) => {
         if (done) return; done = true;
         const val = inp.value.trim();
-        if (!save || !val || val === orig) { td.textContent = orig; return; }
-        const merged = { ...(S.user.price_overrides || {}), [id]: { ...((S.user.price_overrides || {})[id] || {}), label: val } };
+        if (!save || !val || val === orig) { el.textContent = display(orig); return; }
+        const merged = { ...(S.user.price_overrides || {}), [id]: { ...((S.user.price_overrides || {})[id] || {}), [field]: val } };
         const { user } = await api("/api/settings", { method: "PUT", body: { price_overrides: merged } });
         S.user = user; await loadPricing();
-        $$(`td[data-label="${id}"]`).forEach((t) => (t.textContent = val));
-        toast("Renamed", "ok");
+        $$(`[data-${field}="${id}"]`).forEach((t) => (t.textContent = display(val)));
+        toast(field === "unit" ? "Unit changed" : "Renamed", "ok");
       };
       inp.onkeydown = (e) => { if (e.key === "Enter") finish(true); if (e.key === "Escape") finish(false); };
       inp.onblur = () => finish(true);
-    }));
+    };
+    $$("td[data-label]").forEach((td) => (td.ondblclick = () => inlineEdit(td, td.dataset.label, "label", td.textContent, (v) => v)));
+    $$("[data-unit]").forEach((sp) => (sp.ondblclick = () => inlineEdit(sp, sp.dataset.unit, "unit", sp.textContent.replace(/^\/\s*/, ""), (v) => `/ ${v}`)));
     const dirty = {};
     $$(".price-input[data-path]").forEach((i) => (i.oninput = () => { (dirty[i.dataset.path] ||= {})[i.dataset.f] = i.value; $$(`.price-input[data-path="${i.dataset.path}"]`).forEach((o) => { o.value = i.value; o.classList.add("changed"); }); }));
     $("#save").onclick = async () => {

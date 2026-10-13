@@ -306,7 +306,9 @@ def merged_prices(overrides=None):
                 for k, v in vals.items():
                     if k == "label" and str(v).strip():
                         book[section][key]["label"] = str(v).strip()[:120]
-                    elif k in book[section][key] and k != "unit":
+                    elif k == "unit" and "unit" in book[section][key] and str(v).strip():
+                        book[section][key]["unit"] = str(v).strip()[:12]
+                    elif k in book[section][key] and k not in ("label", "unit"):
                         book[section][key][k] = float(v)
         except (ValueError, TypeError):
             continue
