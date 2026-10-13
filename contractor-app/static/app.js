@@ -695,7 +695,7 @@
           <td class="num"><input class="price-input" type="number" step="any" data-mid="${x.db_id}" data-f="cost" value="${x.cost}"></td>
           <td class="right"><button class="btn ghost xs danger" data-delmat="${x.db_id}" title="Delete">${ICON.trash}</button></td></tr>`).join("")}</tbody></table>` : `<div class="empty">No custom materials yet. Click <b>Add material</b> to put in anything you buy regularly.</div>`}</div>
       <div class="grid c2">${Object.entries(sections).map(([sec, label]) => `
-        <div class="card pad-0"><div class="card-head" style="padding:14px 18px 0"><h3>${label}</h3>${S.pricing.price_meta?.series?.[sec] ? `<span class="dim" style="font-size:11px">index: ${esc(S.pricing.price_meta.series[sec].label)} ${S.pricing.price_meta.series[sec].change_pct >= 0 ? "+" : ""}${S.pricing.price_meta.series[sec].change_pct}%</span>` : ""}</div>
+        <div class="card pad-0"><div class="card-head" style="padding:14px 18px 0"><h3>${label}</h3>${S.pricing.price_meta?.series?.[sec] ? `<span class="dim" style="font-size:11px">market ${S.pricing.price_meta.series[sec].change_pct >= 0 ? "up" : "down"} ${Math.abs(S.pricing.price_meta.series[sec].change_pct)}% since June</span>` : ""}</div>
           <table><tbody>${Object.entries(book[sec]).map(([key, v]) => {
             const fields = Object.keys(v).filter((k) => k !== "label");
             return `<tr><td>${esc(v.label)}${v.unit ? ` <span class="dim">/ ${esc(v.unit)}</span>` : ""}</td>
