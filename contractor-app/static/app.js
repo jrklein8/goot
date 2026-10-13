@@ -712,7 +712,7 @@
           <td class="right"><input class="price-input" type="number" step="any" data-mid="${x.db_id}" data-f="cost" value="${x.cost}"> <span class="dim editable" style="font-size:11px" data-cunit="${x.db_id}" title="Double-click to change the unit">/ ${esc(x.unit)}</span>
             <button class="btn ghost xs danger hidden" data-delmat="${x.db_id}" title="Delete">${ICON.trash}</button></td></tr>`;
     const builtinRow = (x) => { const [sec, key] = x.id.split("."); const o = overrides[x.id]?.cost;
-      return `<tr><td class="star-cell">${starHtml(x.id)}</td><td class="editable" data-label="${x.id}" title="Double-click to rename">${esc(x.label)}</td><td class="right"><input class="price-input ${o !== undefined ? "changed" : ""}" type="number" step="any" data-path="${x.id}" data-f="cost" value="${x.cost}"> <span class="dim editable" style="font-size:11px" data-unit="${x.id}" title="Double-click to change the unit">/ ${esc(x.unit)}</span> <button class="btn ghost xs danger hidden" data-hide="${x.id}" title="Remove from price book">${ICON.trash}</button></td></tr>`; };
+      return `<tr><td class="star-cell">${starHtml(x.id)}</td><td class="editable" data-label="${x.id}" title="Double-click to rename">${esc(x.label)}</td><td class="right"><input class="price-input ${o !== undefined ? "changed" : ""}" type="number" step="any" data-path="${x.id}" data-f="cost" value="${x.cost}"> <span class="dim editable" style="font-size:11px" data-unit="${x.id}" title="Double-click to change the unit">/ ${esc(x.unit)}${x.base_unit === "lf" && x.unit !== "lf" ? ` (${S.pricing.book[x.id.split(".")[0]][x.id.split(".")[1]].piece_ft || 8} ft)` : ""}</span> <button class="btn ghost xs danger hidden" data-hide="${x.id}" title="Remove from price book">${ICON.trash}</button></td></tr>`; };
     const hiddenIds = Object.entries(overrides).filter(([, v]) => v && v.hidden).map(([k]) => k);
     main().innerHTML = head("Price book", marketMetaLine(),
       `${hiddenIds.length ? `<button class="btn ghost" id="showhidden">Hidden (${hiddenIds.length})</button>` : ""}<button class="btn" id="market">${ICON.refresh} Update market prices</button><button class="btn" id="addmat">${ICON.plus} Add material</button><button class="btn" id="reset">Reset built-ins</button><button class="btn primary" id="save">Save changes</button>`) + `
@@ -727,7 +727,7 @@
             const id = `${sec}.${key}`;
             const starCell = Object.values(book[sec]).some((b) => "unit" in b) ? `<td class="star-cell">${"unit" in v ? starHtml(id) : ""}</td>` : "";
             return `<tr>${starCell}<td class="editable" data-label="${id}" title="Double-click to rename">${esc(v.label)}</td>
-              <td class="right">${fields.map((f) => `<span class="dim" style="font-size:11px;margin-left:8px">${fields.length > 1 ? f : ""}</span> <input class="price-input ${overrides[id]?.[f] !== undefined ? "changed" : ""}" type="number" step="any" data-path="${id}" data-f="${f}" value="${v[f]}">`).join("")}${"unit" in v ? ` <span class="dim editable" style="font-size:11px" data-unit="${id}" title="Double-click to change the unit">/ ${esc(v.unit)}</span>` : ""} <button class="btn ghost xs danger hidden" data-hide="${id}" title="Remove from price book">${ICON.trash}</button></td></tr>`; }).join("")}
+              <td class="right">${fields.map((f) => `<span class="dim" style="font-size:11px;margin-left:8px">${fields.length > 1 ? f : ""}</span> <input class="price-input ${overrides[id]?.[f] !== undefined ? "changed" : ""}" type="number" step="any" data-path="${id}" data-f="${f}" value="${v[f]}">`).join("")}${"unit" in v ? ` <span class="dim editable" style="font-size:11px" data-unit="${id}" title="Double-click to change the unit">/ ${esc(v.unit)}${v.base_unit === "lf" && v.unit !== "lf" ? ` (${v.piece_ft || 8} ft)` : ""}</span>` : ""} <button class="btn ghost xs danger hidden" data-hide="${id}" title="Remove from price book">${ICON.trash}</button></td></tr>`; }).join("")}
           ${mine.filter((x) => x.section_key === sec).map(customRow).join("")}
           </tbody></table></div>`).join("")}</div>`;
     wireStars(document, () => render());
@@ -743,7 +743,14 @@
         if (!save || !val || val === orig) { el.textContent = display(orig); if (onDone) onDone(); return; }
         if (saver) await saver(val);
         else {
-          const merged = { ...(S.user.price_overrides || {}), [id]: { ...((S.user.price_overrides || {})[id] || {}), [field]: val } };
+          const extra = {};
+          const [sec, key] = id.split(".");
+          const baseUnit = S.pricing.book[sec]?.[key]?.base_unit;
+          if (field === "unit" && baseUnit === "lf" && val !== "lf") {
+            const ft = parseFloat(prompt("Feet per piece? (so the calculators can convert footage to pieces)", String(S.pricing.book[sec][key].piece_ft || 8)));
+            if (ft > 0) extra.piece_ft = ft;
+          }
+          const merged = { ...(S.user.price_overrides || {}), [id]: { ...((S.user.price_overrides || {})[id] || {}), [field]: val, ...extra } };
           const { user } = await api("/api/settings", { method: "PUT", body: { price_overrides: merged } });
           S.user = user;
         }
@@ -757,7 +764,7 @@
     };
     const showHide = (el, on) => { const b = el.closest("tr").querySelector("[data-hide]"); if (b) b.classList.toggle("hidden", !on); };
     $$("td[data-label]").forEach((td) => (td.ondblclick = () => { showHide(td, true); inlineEdit(td, td.dataset.label, "label", td.textContent, (v) => v, null, () => setTimeout(() => showHide(td, false), 250)); }));
-    $$("[data-unit]").forEach((sp) => (sp.ondblclick = () => { showHide(sp, true); inlineEdit(sp, sp.dataset.unit, "unit", sp.textContent.replace(/^\/\s*/, ""), (v) => `/ ${v}`, null, () => setTimeout(() => showHide(sp, false), 250)); }));
+    $$("[data-unit]").forEach((sp) => (sp.ondblclick = () => { showHide(sp, true); inlineEdit(sp, sp.dataset.unit, "unit", sp.textContent.replace(/^\/\s*/, "").replace(/\s*\(.*\)$/, ""), (v) => `/ ${v}`, null, () => setTimeout(() => showHide(sp, false), 250)); }));
     const setHidden = async (id, hidden) => {
       const cur = { ...(S.user.price_overrides || {}) };
       const entry = { ...(cur[id] || {}) };

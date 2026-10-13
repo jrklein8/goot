@@ -74,7 +74,9 @@ def market_refresh(overrides, meta):
     (still equal to the value it wrote) are re-scaled from the base price book."""
     overrides = deepcopy(overrides or {})
     applied_before = (meta or {}).get("applied", {})
-    new_meta = {"updated": datetime.now().isoformat(timespec="seconds"), "baseline": MARKET_BASELINE, "series": {}, "applied": {}}
+    series_before = (meta or {}).get("series", {})
+    manual_before = set((meta or {}).get("manual", []))
+    new_meta = {"updated": datetime.now().isoformat(timespec="seconds"), "baseline": MARKET_BASELINE, "series": {}, "applied": {}, "manual": []}
     report = []
     latest_month = None
     for sec, cfg in MARKET_INDEX.items():
@@ -88,16 +90,21 @@ def market_refresh(overrides, meta):
         latest_month = max(latest_month or "", latest_date)
         new_meta["series"][sec] = {"id": cfg["series"], "label": cfg["label"], "baseline_value": base,
                                   "latest_value": latest, "latest_date": latest_date, "factor": round(factor, 4), "change_pct": change_pct}
+        prev_latest = (series_before.get(sec) or {}).get("latest_value") or base
+        since_last = latest / prev_latest if prev_latest else 1.0
         changed = 0
         for key, v in PRICE_BOOK[sec].items():
             if key in cfg["skip"] or "cost" not in v:
                 continue
             path = f"{sec}.{key}"
             current = (overrides.get(path) or {}).get("cost")
-            manual = current is not None and abs(current - applied_before.get(path, -1)) > 0.004
+            edited = current is not None and abs(current - applied_before.get(path, -1)) > 0.004
+            manual = edited or (path in manual_before and current is not None)
+            # his own price is treated as current as of the last refresh and moves with the index from there;
+            # untouched built-ins are rescaled from the base book so rounding never drifts
+            new_cost = round(current * since_last, 2) if manual else round(v["cost"] * factor, 2)
             if manual:
-                continue
-            new_cost = round(v["cost"] * factor, 2)
+                new_meta["manual"].append(path)
             overrides[path] = {**(overrides.get(path) or {}), "cost": new_cost}
             new_meta["applied"][path] = new_cost
             changed += 1
@@ -306,6 +313,8 @@ def merged_prices(overrides=None):
                 for k, v in vals.items():
                     if k == "hidden":
                         book[section][key]["hidden"] = bool(v)
+                    elif k == "piece_ft":
+                        book[section][key]["piece_ft"] = float(v)
                     elif k == "label" and str(v).strip():
                         book[section][key]["label"] = str(v).strip()[:120]
                     elif k == "unit" and "unit" in book[section][key] and str(v).strip():
@@ -314,6 +323,10 @@ def merged_prices(overrides=None):
                         book[section][key][k] = float(v)
         except (ValueError, TypeError):
             continue
+    for section in MATERIAL_SECTIONS:
+        for key, v in book[section].items():
+            if "unit" in PRICE_BOOK[section][key]:
+                v["base_unit"] = PRICE_BOOK[section][key]["unit"]
     return book
 
 
@@ -324,7 +337,7 @@ def material_catalog(book):
         for key, v in book[sec].items():
             if "unit" in v and not v.get("hidden"):
                 out.append({"id": f"{sec}.{key}", "section": SECTION_LABELS[sec], "section_key": sec, "label": v["label"],
-                            "unit": v["unit"], "cost": v["cost"], "category": CATEGORY_FOR_SECTION.get(sec, "material"), "builtin": True})
+                            "unit": v["unit"], "base_unit": v.get("base_unit"), "cost": v["cost"], "category": CATEGORY_FOR_SECTION.get(sec, "material"), "builtin": True})
     return out
 
 
@@ -349,7 +362,12 @@ def _f(d, k, default=0.0):
 
 def _mat(book, sec, key, qty, label=None):
     v = book[sec][key]
-    it = _li(label or v["label"], CATEGORY_FOR_SECTION.get(sec, "material"), qty, v.get("unit", "ea"), v["cost"])
+    unit = v.get("unit", "ea")
+    if v.get("base_unit") == "lf" and unit != "lf":
+        # priced per piece (e.g. $4.40 per 8 ft stud): convert the footage to pieces
+        piece = float(v.get("piece_ft") or 8.0)
+        qty = math.ceil(qty / piece)
+    it = _li(label or v["label"], CATEGORY_FOR_SECTION.get(sec, "material"), qty, unit, v["cost"])
     it["price_key"] = f"{sec}.{key}"
     it["book_cost"] = v["cost"]
     return it
