@@ -35,6 +35,7 @@ def _secret():
 
 app.secret_key = _secret()
 app.json.sort_keys = False  # keep status / calculator order as defined
+app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0  # no stale CSS/JS while iterating
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
                   PERMANENT_SESSION_LIFETIME=timedelta(days=14))
 
