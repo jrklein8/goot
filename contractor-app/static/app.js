@@ -239,7 +239,7 @@
     let filter = "all", q = "", hideDone = true;
     try { hideDone = localStorage.getItem("hideDone") !== "0"; } catch (_) { /* ignore */ }
     main().innerHTML = head("Jobs", "", `<button class="btn primary" id="newjob">${ICON.plus} New job</button>`) + `
-      <div class="row between wrap mb"><div class="chips" id="chips"></div><div class="row"><label class="check" style="padding:0"><input type="checkbox" id="hidedone"> Hide completed / lost</label><input type="text" id="q" placeholder="Search client, address, job…" style="max-width:280px"></div></div>
+      <div class="row between wrap mb"><div class="chips" id="chips"></div><div class="row"><label class="check" style="padding:0;white-space:nowrap"><input type="checkbox" id="hidedone"> Hide completed</label><input type="text" id="q" placeholder="Search client, address, job…" style="max-width:280px"></div></div>
       <div class="card pad-0" id="list"><div class="empty">Loading…</div></div>`;
     $("#newjob").onclick = () => jobModal();
     await loadJobs();
