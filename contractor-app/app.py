@@ -103,19 +103,31 @@ def now():
 
 
 def init_db():
+    """Create tables, apply migrations, seed the demo account. Safe to run from several
+    gunicorn workers at once: the write lock serializes them and the seed is re-checked inside it."""
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
-    conn = sqlite3.connect(DB_PATH)
-    conn.executescript(SCHEMA)
-    for table, col, ddl in (("jobs", "conditions", "TEXT DEFAULT '[]'"), ("jobs", "trips", "INTEGER DEFAULT 0"),
-                            ("users", "price_meta", "TEXT DEFAULT '{}'"), ("users", "favorites", "TEXT DEFAULT '[]'"),
-                            ("jobs", "price_sync", "INTEGER DEFAULT 1"),
-                            ("line_items", "price_key", "TEXT")):
-        if col not in [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]:
-            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
-    conn.commit()
-    if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
-        seed_demo(conn)
-    conn.close()
+    conn = sqlite3.connect(DB_PATH, timeout=30)
+    try:
+        conn.execute("BEGIN IMMEDIATE")           # one worker at a time from here
+        conn.executescript(SCHEMA)                # (executescript commits; re-lock below)
+        conn.execute("BEGIN IMMEDIATE")
+        for table, col, ddl in (("jobs", "conditions", "TEXT DEFAULT '[]'"), ("jobs", "trips", "INTEGER DEFAULT 0"),
+                                ("users", "price_meta", "TEXT DEFAULT '{}'"), ("users", "favorites", "TEXT DEFAULT '[]'"),
+                                ("jobs", "price_sync", "INTEGER DEFAULT 1"),
+                                ("line_items", "price_key", "TEXT")):
+            if col not in [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]:
+                try:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
+                except sqlite3.OperationalError as e:   # another worker just added it
+                    if "duplicate column" not in str(e):
+                        raise
+        if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
+            seed_demo(conn)
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.rollback()                           # another worker seeded first; nothing to do
+    finally:
+        conn.close()
 
 
 # ------------------------------------------------------------------ auth helpers
