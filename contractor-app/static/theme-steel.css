@@ -1,0 +1,116 @@
+/* =====================================================================
+   THEME: STEEL
+   Matte black and gunmetal, caution yellow, heavy flat type, no ornament.
+   Looks like the side of a tool box. Everything is a block.
+   ===================================================================== */
+html[data-theme="steel"] {
+  --bg: #0c0c0c; --bg-2: #121212; --surface: #171717; --surface-2: #1f1f1f; --surface-3: #292929;
+  --border: #2c2c2c; --border-2: #3d3d3d; --text: #f4f4f2; --text-2: #b4b4b0; --muted: #767672;
+  --accent: #ffd400; --accent-2: #ffe14a; --accent-dim: rgba(255, 212, 0, 0.14);
+  --green: #7ed957; --blue: #63b3ff; --purple: #b79cff; --teal: #4fd1c5; --pink: #ff7aa8; --red: #ff4d4d;
+  --radius: 3px; --radius-sm: 2px;
+  --font: "Archivo", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+}
+html[data-theme="steel"] body { background: var(--bg); font-size: 14.5px; }
+html[data-theme="steel"] h1 { font-weight: 900; font-size: 30px; letter-spacing: -0.02em; text-transform: uppercase; line-height: 1; }
+html[data-theme="steel"] h1 .dim { font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: 0.05em; color: var(--accent); }
+html[data-theme="steel"] h2 { font-weight: 800; font-size: 20px; text-transform: uppercase; letter-spacing: -0.01em; }
+html[data-theme="steel"] h3 { font-weight: 800; font-size: 12px; letter-spacing: 0.14em; color: var(--text); padding-left: 10px; border-left: 4px solid var(--accent); line-height: 1.1; }
+html[data-theme="steel"] .page-head { margin-bottom: 24px; }
+html[data-theme="steel"] .page-head .sub { font-family: var(--mono); font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+
+/* layout: a steel rail */
+html[data-theme="steel"] .sidebar { background: #0a0a0a; border-right: 1px solid var(--border-2); padding: 0; }
+html[data-theme="steel"] .brand { padding: 22px 18px; background: var(--accent); color: #000; margin: 0 0 6px; }
+html[data-theme="steel"] .brand .logo { border-radius: 0; background: #000; color: var(--accent); font-weight: 900; }
+html[data-theme="steel"] .brand .name { font-weight: 900; font-size: 15px; text-transform: uppercase; letter-spacing: 0.02em; color: #000; }
+html[data-theme="steel"] .nav { padding: 0 10px; }
+html[data-theme="steel"] .nav a { border-radius: 0; font-weight: 700; font-size: 13px; text-transform: uppercase; letter-spacing: 0.08em; padding: 12px 12px; border-bottom: 1px solid var(--border); color: var(--text-2); }
+html[data-theme="steel"] .nav a:hover { background: var(--surface); color: var(--text); }
+html[data-theme="steel"] .nav a.active { background: var(--surface-2); color: var(--accent); box-shadow: inset 4px 0 0 var(--accent); }
+html[data-theme="steel"] .userbox { margin: 0 10px; border-top: 1px solid var(--border-2); font-family: var(--mono); font-size: 11px; }
+
+/* cards: flat plates, no shadow, one hard edge */
+html[data-theme="steel"] .card { border: 1px solid var(--border-2); border-top: 3px solid var(--border-2); border-radius: var(--radius); background: linear-gradient(180deg, #1a1a1a, #151515); }
+html[data-theme="steel"] .stat { border-top-color: var(--accent); }
+html[data-theme="steel"] .stat .label { font-weight: 800; font-size: 10.5px; letter-spacing: 0.14em; color: var(--muted); }
+html[data-theme="steel"] .stat .value { font-weight: 900; font-size: 40px; letter-spacing: -0.03em; line-height: 1; margin-top: 10px; }
+html[data-theme="steel"] .stat .value.accent { color: var(--accent); }
+html[data-theme="steel"] .stat .foot { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+/* buttons: solid blocks */
+html[data-theme="steel"] .btn { border-radius: var(--radius); border: 1px solid var(--border-2); background: var(--surface-2); font-weight: 800; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.08em; padding: 9px 14px; }
+html[data-theme="steel"] .btn:hover { background: var(--surface-3); border-color: var(--text-2); }
+html[data-theme="steel"] .btn.primary { background: var(--accent); border-color: var(--accent); color: #000; }
+html[data-theme="steel"] .btn.primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+html[data-theme="steel"] .btn.ghost { background: transparent; border-color: transparent; color: var(--text-2); }
+html[data-theme="steel"] .btn.ghost:hover { border-color: var(--border-2); }
+html[data-theme="steel"] .btn.danger { color: var(--red); }
+html[data-theme="steel"] .btn.sm { padding: 6px 10px; font-size: 11.5px; } html[data-theme="steel"] .btn.xs { padding: 4px 8px; font-size: 11px; }
+
+/* forms */
+html[data-theme="steel"] input[type=text], html[data-theme="steel"] input[type=email], html[data-theme="steel"] input[type=password],
+html[data-theme="steel"] input[type=number], html[data-theme="steel"] input[type=date], html[data-theme="steel"] input[type=datetime-local],
+html[data-theme="steel"] select, html[data-theme="steel"] textarea { background: #0a0a0a; border: 1px solid var(--border-2); border-radius: var(--radius); }
+html[data-theme="steel"] input:focus, html[data-theme="steel"] select:focus, html[data-theme="steel"] textarea:focus { border-color: var(--accent); box-shadow: inset 0 -2px 0 var(--accent); }
+html[data-theme="steel"] label.field > span { font-weight: 700; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+html[data-theme="steel"] input[type=checkbox] { accent-color: var(--accent); }
+
+/* tags: solid fills, no dots */
+html[data-theme="steel"] .badge { border-radius: var(--radius-sm); font-weight: 800; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; padding: 3px 8px; }
+html[data-theme="steel"] .badge::before { display: none; }
+html[data-theme="steel"] .badge.quoted { background: var(--accent); color: #000; }
+html[data-theme="steel"] .badge.approved { background: var(--green); color: #000; }
+html[data-theme="steel"] .badge.estimating { background: var(--blue); color: #000; }
+html[data-theme="steel"] .badge.in_progress { background: var(--teal); color: #000; }
+html[data-theme="steel"] .badge.complete { background: var(--purple); color: #000; }
+html[data-theme="steel"] .badge.lost { background: var(--red); color: #000; }
+html[data-theme="steel"] .badge.lead { background: var(--surface-3); color: var(--text); }
+html[data-theme="steel"] select.status-select { border-radius: var(--radius-sm); font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; font-size: 11px; }
+html[data-theme="steel"] .cat { border-radius: var(--radius-sm); font-weight: 800; }
+html[data-theme="steel"] .chip { border-radius: var(--radius); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; font-size: 11.5px; }
+html[data-theme="steel"] .chip.active { background: var(--accent); border-color: var(--accent); color: #000; }
+html[data-theme="steel"] .meta-chip { border-radius: var(--radius-sm); font-family: var(--mono); font-size: 11px; text-transform: uppercase; }
+
+/* tables: job sheet with zebra rows */
+html[data-theme="steel"] th { font-weight: 800; letter-spacing: 0.12em; color: var(--muted); border-bottom: 2px solid var(--border-2); }
+html[data-theme="steel"] td { border-bottom: 1px solid var(--border); }
+html[data-theme="steel"] tbody tr:nth-child(even) td { background: rgba(255, 255, 255, 0.015); }
+html[data-theme="steel"] tr.group-head td { background: var(--surface-2); font-weight: 800; text-transform: uppercase; letter-spacing: 0.03em; font-size: 13px; border-top: 1px solid var(--border-2); }
+html[data-theme="steel"] tr.clickable:hover td { background: var(--surface-2); }
+html[data-theme="steel"] td.num, html[data-theme="steel"] th.num { font-family: var(--mono); }
+
+/* totals */
+html[data-theme="steel"] .totals .line b { font-family: var(--mono); }
+html[data-theme="steel"] .totals .line.grand { border-top: 3px solid var(--accent); padding-top: 12px; }
+html[data-theme="steel"] .totals .line.grand span { font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; align-self: center; }
+html[data-theme="steel"] .totals .line.grand b { font-family: var(--font); font-weight: 900; font-size: 32px; letter-spacing: -0.02em; color: var(--accent); }
+
+/* pipeline / calendar / misc */
+html[data-theme="steel"] .pipe { border-radius: 0; height: 14px; }
+html[data-theme="steel"] .pipe span { border-radius: 0; }
+html[data-theme="steel"] .c-lead { background: #4a4a4a; }
+html[data-theme="steel"] .c-quoted { background: var(--accent); }
+html[data-theme="steel"] .legend i { border-radius: 0; }
+html[data-theme="steel"] .cal { border-radius: var(--radius); border-color: var(--border-2); }
+html[data-theme="steel"] .cal .dow { font-weight: 800; letter-spacing: 0.12em; }
+html[data-theme="steel"] .cal .day.today .n { border-radius: 0; background: var(--accent); color: #000; font-weight: 900; }
+html[data-theme="steel"] .ev { border-radius: 0; font-family: var(--mono); font-size: 11px; }
+html[data-theme="steel"] .agenda .when .d { font-weight: 900; font-size: 22px; }
+html[data-theme="steel"] .agenda .when .m { font-weight: 800; }
+html[data-theme="steel"] .cmp .track { border-radius: 0; }
+html[data-theme="steel"] .cmp .track span { border-radius: 0; }
+html[data-theme="steel"] .cmp .band.small .track span { background: var(--accent-dim); box-shadow: inset 0 0 0 1px var(--accent); }
+html[data-theme="steel"] .code { border-radius: var(--radius-sm); }
+html[data-theme="steel"] .modal { border-radius: var(--radius); border: 1px solid var(--border-2); border-top: 4px solid var(--accent); }
+html[data-theme="steel"] .toast { border-radius: var(--radius); border-left: 5px solid var(--accent); font-weight: 600; }
+html[data-theme="steel"] .toast.err { border-left-color: var(--red); } html[data-theme="steel"] .toast.ok { border-left-color: var(--green); }
+html[data-theme="steel"] .auth-wrap { background: var(--bg); }
+html[data-theme="steel"] .auth .card { border-top: 6px solid var(--accent); }
+html[data-theme="steel"] .auth .tabs { border-radius: var(--radius); }
+html[data-theme="steel"] .auth .tabs button { border-radius: var(--radius-sm); font-weight: 800; text-transform: uppercase; letter-spacing: 0.08em; font-size: 12px; }
+html[data-theme="steel"] .auth .tabs button.active { background: var(--accent); color: #000; }
+html[data-theme="steel"] .star.on { color: var(--accent); }
+html[data-theme="steel"] .greeting { font-weight: 900; text-transform: uppercase; }
+html[data-theme="steel"] .demo-hint { border-radius: var(--radius); }

@@ -941,7 +941,7 @@
             </form>
           </div>
           <div class="card"><h3 class="mb">Look</h3>
-            <div class="chips">${[["default", "Original"], ["jobsite", "Jobsite"], ["ledger", "Ledger"]].map(([k, l]) => `<button class="chip ${(document.documentElement.dataset.theme || "default") === k ? "active" : ""}" data-theme-pick="${k}">${l}</button>`).join("")}</div>
+            <div class="chips">${[["default", "Original"], ["jobsite", "Jobsite"], ["steel", "Steel"]].map(([k, l]) => `<button class="chip ${(document.documentElement.dataset.theme || "default") === k ? "active" : ""}" data-theme-pick="${k}">${l}</button>`).join("")}</div>
           </div>
           <div class="card"><h3 class="mb">Backups</h3>
             <div id="bkinfo" class="muted" style="font-size:13px">Checking…</div>
