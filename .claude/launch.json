@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "contractor-app",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["contractor-app/app.py"],
+      "port": 5000
+    }
+  ]
+}

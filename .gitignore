@@ -6,3 +6,6 @@ __pycache__/
 
 # Claude Code local state
 .claude/worktrees/
+
+# contractor-app local data (sqlite db, session secret)
+contractor-app/data/

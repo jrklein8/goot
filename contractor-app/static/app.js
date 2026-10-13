@@ -1,0 +1,646 @@
+/* Contractor estimator + schedule: single-page frontend (no build step). */
+(() => {
+  "use strict";
+
+  // ------------------------------------------------------------ state
+  const S = {
+    user: null,
+    pricing: null,          // {region, book, calculators, statuses, event_types}
+    jobs: [],
+    route: location.hash.slice(1) || "dashboard",
+    calMonth: startOfMonth(new Date()),
+  };
+  const root = document.getElementById("root");
+
+  // ------------------------------------------------------------ helpers
+  const $ = (sel, el = document) => el.querySelector(sel);
+  const $$ = (sel, el = document) => [...el.querySelectorAll(sel)];
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const money = (n) => (Number(n) || 0).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+  const money2 = (n) => (Number(n) || 0).toLocaleString("en-US", { style: "currency", currency: "USD" });
+  const num = (n) => (Number(n) || 0).toLocaleString("en-US", { maximumFractionDigits: 2 });
+  const titleCase = (s) => String(s || "").replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  const STATUS_LABEL = { lead: "Lead", estimating: "Estimating", quoted: "Quoted", approved: "Approved", in_progress: "In progress", complete: "Complete", lost: "Lost" };
+  const TYPE_LABEL = { site_visit: "Site visit", work: "Work day", inspection: "Inspection", delivery: "Delivery", meeting: "Meeting", other: "Other" };
+
+  function startOfMonth(d) { return new Date(d.getFullYear(), d.getMonth(), 1); }
+  function ymd(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+  function fmtDate(iso, opts = { month: "short", day: "numeric" }) { return iso ? new Date(iso).toLocaleDateString("en-US", opts) : ""; }
+  function fmtTime(iso) { return iso ? new Date(iso).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" }) : ""; }
+  function fmtDT(iso) { return iso ? `${fmtDate(iso, { weekday: "short", month: "short", day: "numeric" })} · ${fmtTime(iso)}` : ""; }
+  function relDate(iso) {
+    if (!iso) return "";
+    const diff = (new Date(iso) - new Date()) / 864e5;
+    if (Math.abs(diff) < 1) return "today";
+    return diff < 0 ? `${Math.round(-diff)}d ago` : `in ${Math.round(diff)}d`;
+  }
+
+  async function api(path, opts = {}) {
+    const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts, body: opts.body ? JSON.stringify(opts.body) : undefined });
+    let data = {};
+    try { data = await r.json(); } catch (_) { /* no body */ }
+    if (r.status === 401 && S.user) { S.user = null; render(); }
+    if (!r.ok) throw new Error(data.error || `Request failed (${r.status})`);
+    return data;
+  }
+
+  function toast(msg, kind = "") {
+    const t = document.createElement("div");
+    t.className = `toast ${kind}`;
+    t.textContent = msg;
+    $("#toasts").appendChild(t);
+    setTimeout(() => t.remove(), 3200);
+  }
+
+  function modal(html, { wide = false } = {}) {
+    const bg = document.createElement("div");
+    bg.className = "modal-bg";
+    bg.innerHTML = `<div class="modal ${wide ? "wide" : ""}">${html}</div>`;
+    bg.addEventListener("click", (e) => { if (e.target === bg) close(); });
+    const onKey = (e) => { if (e.key === "Escape") close(); };
+    document.addEventListener("keydown", onKey);
+    document.body.appendChild(bg);
+    function close() { bg.remove(); document.removeEventListener("keydown", onKey); }
+    $$("[data-close]", bg).forEach((b) => b.addEventListener("click", close));
+    return { el: bg, close };
+  }
+
+  function confirmDlg(text) {
+    return new Promise((res) => {
+      const m = modal(`<h2>Are you sure?</h2><p class="muted">${esc(text)}</p>
+        <div class="actions"><button class="btn" data-close>Cancel</button><button class="btn danger" id="ok">Delete</button></div>`);
+      $("#ok", m.el).onclick = () => { m.close(); res(true); };
+      m.el.addEventListener("click", (e) => { if (e.target === m.el) res(false); });
+    });
+  }
+
+  const formData = (form) => {
+    const o = {};
+    new FormData(form).forEach((v, k) => (o[k] = v));
+    $$("input[type=checkbox]", form).forEach((c) => (o[c.name] = c.checked));
+    return o;
+  };
+
+  const ICON = {
+    dash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></svg>',
+    jobs: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18v13H3z"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>',
+    calc: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 11h2M12 11h2M16 11h0M8 15h2M12 15h2M16 15v3"/></svg>',
+    cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="17" rx="2"/><path d="M3 9h18M8 2v4M16 2v4"/></svg>',
+    book: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h12a3 3 0 0 1 3 3v13H7a3 3 0 0 0-3 3z"/><path d="M4 4v16"/><path d="M8 9h7M8 13h5"/></svg>',
+    gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
+    plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>',
+    trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
+    ext: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4h6v6M20 4l-9 9M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>',
+  };
+
+  // ------------------------------------------------------------ boot
+  async function boot() {
+    const { user } = await api("/api/auth/me");
+    S.user = user;
+    if (user) await loadPricing();
+    render();
+  }
+  async function loadPricing() { S.pricing = await api("/api/pricing"); }
+  async function loadJobs() { S.jobs = (await api("/api/jobs")).jobs; return S.jobs; }
+
+  window.addEventListener("hashchange", () => { S.route = location.hash.slice(1) || "dashboard"; render(); });
+  const go = (r) => { location.hash = r; };
+
+  // ------------------------------------------------------------ render shell
+  function render() {
+    if (!S.user) return renderAuth();
+    const [page, arg] = S.route.split("/");
+    const nav = [["dashboard", "Dashboard", ICON.dash], ["jobs", "Jobs", ICON.jobs], ["calculators", "Calculators", ICON.calc], ["schedule", "Schedule", ICON.cal], ["pricebook", "Price book", ICON.book], ["settings", "Settings", ICON.gear]];
+    root.innerHTML = `
+      <div id="app">
+        <aside class="sidebar">
+          <div class="brand"><div class="logo">${esc((S.user.business_name || "C")[0].toUpperCase())}</div>
+            <div><div class="name">${esc(S.user.business_name || "Job Estimator")}</div><div class="sub">Wilmington, NC</div></div></div>
+          <nav class="nav">${nav.map(([r, l, i]) => `<a href="#${r}" class="${page === r ? "active" : ""}">${i}<span>${l}</span></a>`).join("")}</nav>
+          <div class="spacer"></div>
+          <div class="userbox"><div class="biz">${esc(S.user.name || S.user.email)}</div><div class="dim">${esc(S.user.email)}</div>
+            <button class="btn ghost sm mt" id="logout">Sign out</button></div>
+        </aside>
+        <main class="main" id="main"></main>
+      </div>`;
+    $("#logout").onclick = async () => { await api("/api/auth/logout", { method: "POST" }); S.user = null; render(); };
+    const pages = { dashboard: pageDashboard, jobs: arg ? () => pageJob(+arg) : pageJobs, calculators: () => pageCalculators(arg), schedule: pageSchedule, pricebook: pagePriceBook, settings: pageSettings };
+    (pages[page] || pageDashboard)();
+  }
+
+  const main = () => $("#main");
+  const head = (title, sub = "", actions = "") => `<div class="page-head"><div><h1>${title}</h1>${sub ? `<div class="sub">${sub}</div>` : ""}</div><div class="row">${actions}</div></div>`;
+
+  // ------------------------------------------------------------ auth
+  function renderAuth(mode = "login") {
+    root.innerHTML = `
+      <div class="auth-wrap"><div class="auth"><div class="card">
+        <div class="brand"><div class="logo">J</div><div><div class="name">Job Estimator</div><div class="sub">Estimating + scheduling for contractors</div></div></div>
+        <div class="tabs"><button class="${mode === "login" ? "active" : ""}" data-m="login">Sign in</button><button class="${mode === "register" ? "active" : ""}" data-m="register">Create account</button></div>
+        <form id="authf" class="stack">
+          ${mode === "register" ? `<label class="field"><span>Your name</span><input name="name" type="text" autocomplete="name"></label>
+          <label class="field"><span>Business name</span><input name="business_name" type="text" placeholder="e.g. Cape Fear Carpentry LLC"></label>` : ""}
+          <label class="field"><span>Email</span><input name="email" type="email" required autocomplete="username"></label>
+          <label class="field"><span>Password</span><input name="password" type="password" required minlength="8" autocomplete="${mode === "login" ? "current-password" : "new-password"}"></label>
+          <div class="error" id="autherr"></div>
+          <button class="btn primary" style="justify-content:center">${mode === "login" ? "Sign in" : "Create account"}</button>
+        </form>
+        ${mode === "login" ? `<div class="demo-hint">Demo account: <b>demo@example.com</b> / <b>demo1234</b> <button class="btn xs" id="demo" style="margin-left:8px">Fill it in</button></div>` : ""}
+      </div></div></div>`;
+    $$(".tabs button").forEach((b) => (b.onclick = () => renderAuth(b.dataset.m)));
+    const demo = $("#demo");
+    if (demo) demo.onclick = () => { $("[name=email]").value = "demo@example.com"; $("[name=password]").value = "demo1234"; };
+    $("#authf").onsubmit = async (e) => {
+      e.preventDefault();
+      try {
+        const { user } = await api(`/api/auth/${mode}`, { method: "POST", body: formData(e.target) });
+        S.user = user; await loadPricing(); render();
+      } catch (err) { $("#autherr").textContent = err.message; }
+    };
+  }
+
+  // ------------------------------------------------------------ dashboard
+  async function pageDashboard() {
+    main().innerHTML = head("Dashboard", `${esc(S.pricing.region.name)} · ${new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}`,
+      `<button class="btn" id="newev">${ICON.plus} Schedule</button><button class="btn primary" id="newjob">${ICON.plus} New job</button>`) + `<div id="dash" class="empty">Loading…</div>`;
+    $("#newjob").onclick = () => jobModal();
+    $("#newev").onclick = () => eventModal();
+    const d = await api("/api/dashboard");
+    const active = Object.entries(d.by_status).filter(([s]) => !["complete", "lost"].includes(s)).reduce((a, [, v]) => a + v.count, 0);
+    const totalCount = Object.values(d.by_status).reduce((a, v) => a + v.count, 0) || 1;
+    $("#dash").className = "";
+    $("#dash").innerHTML = `
+      <div class="grid c4">
+        <div class="card stat"><div class="label">Pipeline (estimating + quoted)</div><div class="value accent">${money(d.pipeline_value)}</div><div class="foot">${d.by_status.estimating.count + d.by_status.quoted.count} jobs waiting on a yes</div></div>
+        <div class="card stat"><div class="label">Booked work</div><div class="value">${money(d.booked_value)}</div><div class="foot">${d.by_status.approved.count + d.by_status.in_progress.count} approved or in progress</div></div>
+        <div class="card stat"><div class="label">Active jobs</div><div class="value">${active}</div><div class="foot">${d.by_status.lead.count} new leads</div></div>
+        <div class="card stat"><div class="label">Next 7 days</div><div class="value">${d.upcoming.filter((e) => (new Date(e.start) - Date.now()) < 7 * 864e5).length}</div><div class="foot">scheduled events</div></div>
+      </div>
+      <div class="grid side mt">
+        <div>
+          <div class="card">
+            <div class="card-head"><h3>Job pipeline</h3><a href="#jobs">All jobs</a></div>
+            <div class="pipe">${Object.entries(d.by_status).map(([s, v]) => `<span class="c-${s}" style="width:${(v.count / totalCount) * 100}%" title="${STATUS_LABEL[s]}: ${v.count}"></span>`).join("")}</div>
+            <div class="legend">${Object.entries(d.by_status).map(([s, v]) => `<span><i class="c-${s}"></i>${STATUS_LABEL[s]} <b>${v.count}</b> <span class="dim">${money(v.value)}</span></span>`).join("")}</div>
+          </div>
+          <div class="card pad-0">
+            <div class="card-head" style="padding:14px 18px 0"><h3>Recent jobs</h3></div>
+            ${jobsTable(d.recent_jobs)}
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Coming up</h3><a href="#schedule">Calendar</a></div>
+          ${agenda(d.upcoming)}
+        </div>
+      </div>`;
+    wireJobRows();
+    wireAgenda();
+  }
+
+  function agenda(events) {
+    if (!events.length) return `<div class="empty">Nothing scheduled.</div>`;
+    return `<div class="agenda">${events.map((e) => `
+      <div class="item" data-ev='${esc(JSON.stringify(e))}'>
+        <div class="when"><div class="d">${new Date(e.start).getDate()}</div><div class="m">${fmtDate(e.start, { month: "short" })}</div><div class="t">${e.all_day ? "all day" : fmtTime(e.start)}</div></div>
+        <div class="what"><div class="title"><span class="dot ${e.type}"></span>${esc(e.title)}</div>
+          <div class="sub">${e.job_no ? `<a href="#jobs/${e.job_id}">${esc(e.job_no)}</a> · ${esc(e.job_title)}` : TYPE_LABEL[e.type] || ""}${e.location ? ` · ${esc(e.location)}` : ""}</div></div>
+      </div>`).join("")}</div>`;
+  }
+  function wireAgenda() { $$(".agenda .item").forEach((el) => (el.onclick = (e) => { if (e.target.tagName === "A") return; eventModal(JSON.parse(el.dataset.ev)); })); }
+
+  // ------------------------------------------------------------ jobs list
+  function jobsTable(jobs, { withStatus = false } = {}) {
+    if (!jobs.length) return `<div class="empty">No jobs yet. Create one to start estimating.</div>`;
+    return `<div class="table-wrap"><table>
+      <thead><tr><th>Job</th><th>Client</th><th>Type</th><th>Status</th><th class="num">Estimate</th><th>Updated</th></tr></thead>
+      <tbody>${jobs.map((j) => `<tr class="clickable" data-id="${j.id}">
+        <td><div style="font-weight:600">${esc(j.title)}</div><div class="dim mono" style="font-size:11.5px">${esc(j.job_no)}</div></td>
+        <td>${esc(j.client_name || "—")}<div class="dim" style="font-size:12px">${esc(j.address || "")}</div></td>
+        <td class="muted">${esc(j.job_type || "—")}</td>
+        <td>${withStatus ? statusSelect(j) : `<span class="badge ${j.status}">${STATUS_LABEL[j.status]}</span>`}</td>
+        <td class="num">${money(j.summary.total)}</td>
+        <td class="dim">${relDate(j.updated_at)}</td></tr>`).join("")}</tbody></table></div>`;
+  }
+  function statusSelect(j) {
+    return `<select class="status-select badge ${j.status}" data-status="${j.id}">${S.pricing.statuses.map((s) => `<option value="${s}" ${s === j.status ? "selected" : ""}>${STATUS_LABEL[s]}</option>`).join("")}</select>`;
+  }
+  function wireJobRows() {
+    $$("tr[data-id]").forEach((tr) => (tr.onclick = (e) => { if (e.target.tagName === "SELECT") return; go(`jobs/${tr.dataset.id}`); }));
+    $$("select[data-status]").forEach((sel) => (sel.onchange = async () => {
+      await api(`/api/jobs/${sel.dataset.status}`, { method: "PUT", body: { status: sel.value } });
+      sel.className = `status-select badge ${sel.value}`;
+      toast("Status updated", "ok");
+    }));
+  }
+
+  async function pageJobs() {
+    let filter = "all", q = "";
+    main().innerHTML = head("Jobs", "Every estimate lives under a job.", `<button class="btn primary" id="newjob">${ICON.plus} New job</button>`) + `
+      <div class="row between wrap mb"><div class="chips" id="chips"></div><input type="text" id="q" placeholder="Search client, address, job…" style="max-width:280px"></div>
+      <div class="card pad-0" id="list"><div class="empty">Loading…</div></div>`;
+    $("#newjob").onclick = () => jobModal();
+    await loadJobs();
+    const draw = () => {
+      const counts = { all: S.jobs.length };
+      S.jobs.forEach((j) => (counts[j.status] = (counts[j.status] || 0) + 1));
+      $("#chips").innerHTML = ["all", ...S.pricing.statuses].filter((s) => s === "all" || counts[s]).map((s) =>
+        `<button class="chip ${filter === s ? "active" : ""}" data-f="${s}">${s === "all" ? "All" : STATUS_LABEL[s]} <span class="dim">${counts[s] || 0}</span></button>`).join("");
+      $$("#chips .chip").forEach((c) => (c.onclick = () => { filter = c.dataset.f; draw(); }));
+      const rows = S.jobs.filter((j) => (filter === "all" || j.status === filter) && (!q || `${j.title} ${j.client_name} ${j.address} ${j.job_no} ${j.job_type}`.toLowerCase().includes(q)));
+      $("#list").innerHTML = jobsTable(rows, { withStatus: true });
+      wireJobRows();
+    };
+    $("#q").oninput = (e) => { q = e.target.value.toLowerCase(); draw(); };
+    draw();
+  }
+
+  function jobModal(job = null, onSaved) {
+    const j = job || {};
+    const m = modal(`<h2>${job ? "Edit job" : "New job"}</h2>
+      <form id="jf" class="form-grid">
+        <label class="field full"><span>Job title *</span><input name="title" type="text" required value="${esc(j.title || "")}" placeholder="e.g. Backyard composite deck"></label>
+        <label class="field"><span>Client name</span><input name="client_name" type="text" value="${esc(j.client_name || "")}"></label>
+        <label class="field"><span>Phone</span><input name="client_phone" type="text" value="${esc(j.client_phone || "")}"></label>
+        <label class="field"><span>Email</span><input name="client_email" type="email" value="${esc(j.client_email || "")}"></label>
+        <label class="field"><span>Job type</span><input name="job_type" type="text" list="jtypes" value="${esc(j.job_type || "")}" placeholder="Deck, Roofing, Addition…">
+          <datalist id="jtypes">${["Deck", "Roofing", "Addition", "Remodel", "Interior", "Fence", "Concrete", "Framing", "Repair", "Other"].map((t) => `<option value="${t}">`).join("")}</datalist></label>
+        <label class="field full"><span>Job address</span><input name="address" type="text" value="${esc(j.address || "")}" placeholder="Street, Wilmington, NC"></label>
+        <label class="field"><span>Status</span><select name="status">${S.pricing.statuses.map((s) => `<option value="${s}" ${(j.status || "lead") === s ? "selected" : ""}>${STATUS_LABEL[s]}</option>`).join("")}</select></label>
+        <label class="field full"><span>Notes</span><textarea name="notes" placeholder="Access, HOA, client preferences, scope notes…">${esc(j.notes || "")}</textarea></label>
+      </form>
+      <div class="actions"><button class="btn" data-close>Cancel</button><button class="btn primary" id="save">${job ? "Save" : "Create job"}</button></div>`);
+    $("#save", m.el).onclick = async () => {
+      const f = $("#jf", m.el);
+      if (!f.reportValidity()) return;
+      try {
+        const res = job ? await api(`/api/jobs/${job.id}`, { method: "PUT", body: formData(f) }) : await api("/api/jobs", { method: "POST", body: formData(f) });
+        m.close(); toast(job ? "Job saved" : "Job created", "ok");
+        if (onSaved) onSaved(res.job); else go(`jobs/${res.job.id}`);
+      } catch (err) { toast(err.message, "err"); }
+    };
+    setTimeout(() => $("[name=title]", m.el).focus(), 30);
+  }
+
+  // ------------------------------------------------------------ job detail
+  async function pageJob(id) {
+    let job;
+    try { job = (await api(`/api/jobs/${id}`)).job; } catch (_) { main().innerHTML = head("Job not found") + `<a href="#jobs">Back to jobs</a>`; return; }
+    const draw = () => {
+      const u = S.user, sm = job.summary;
+      const groups = {};
+      job.items.forEach((it) => { (groups[it.group_label || "Other items"] ||= []).push(it); });
+      main().innerHTML = head(`<span class="dim mono" style="font-size:14px;font-weight:500">${esc(job.job_no)}</span> ${esc(job.title)}`,
+        `${esc(job.client_name || "No client")}${job.job_type ? ` · ${esc(job.job_type)}` : ""}`,
+        `${statusSelect(job)} <button class="btn" id="edit">Edit</button><button class="btn" id="proposal">Proposal preview</button><button class="btn ghost danger" id="del">${ICON.trash}</button>`) + `
+        <div class="grid side">
+          <div>
+            <div class="card pad-0">
+              <div class="card-head" style="padding:14px 18px 0"><h3>Estimate</h3>
+                <div class="row"><button class="btn sm" id="addcustom">${ICON.plus} Custom line</button><button class="btn sm primary" id="addcalc">${ICON.plus} From calculator</button></div></div>
+              ${job.items.length ? `<div class="table-wrap"><table>
+                <thead><tr><th style="width:44%">Item</th><th>Type</th><th class="num">Qty</th><th>Unit</th><th class="num">Unit cost</th><th class="num">Total</th><th></th></tr></thead>
+                <tbody>${Object.entries(groups).map(([g, items]) => `
+                  <tr class="group-head"><td colspan="5">${esc(g)} <span class="dim" style="font-weight:400;font-size:12px">· ${items[0].source === "custom" ? "custom" : titleCase(items[0].source)}</span></td>
+                    <td class="num">${money2(items.reduce((a, i) => a + i.total, 0))}</td>
+                    <td class="right"><button class="btn ghost xs danger" data-delgroup="${esc(g)}" title="Remove group">${ICON.trash}</button></td></tr>
+                  ${items.map((it) => `<tr>
+                    <td>${esc(it.description)}</td><td><span class="cat ${it.category}">${it.category}</span></td>
+                    <td class="num"><input class="inline-num" data-qty="${it.id}" value="${it.qty}"></td><td class="dim">${esc(it.unit)}</td>
+                    <td class="num"><input class="inline-num" data-uc="${it.id}" value="${it.unit_cost}"></td>
+                    <td class="num">${money2(it.total)}</td>
+                    <td class="right"><button class="btn ghost xs" data-delitem="${it.id}" title="Remove">✕</button></td></tr>`).join("")}`).join("")}
+                </tbody></table></div>` : `<div class="empty">No line items yet. Add from a calculator or type a custom line.</div>`}
+            </div>
+            <div class="card">
+              <div class="card-head"><h3>Schedule for this job</h3><button class="btn sm" id="addev">${ICON.plus} Add to schedule</button></div>
+              ${job.events.length ? agenda(job.events) : `<div class="dim">Nothing scheduled yet.</div>`}
+            </div>
+          </div>
+          <div>
+            <div class="card">
+              <h3 class="mb">Totals</h3>
+              <div class="totals">
+                ${Object.entries(sm.by_category).map(([c, v]) => `<div class="line"><span><span class="cat ${c}">${c}</span></span><b>${money2(v)}</b></div>`).join("")}
+                <div class="line" style="border-top:1px solid var(--border);padding-top:7px"><span>Direct cost</span><b>${money2(sm.direct_cost)}</b></div>
+                <div class="line"><span>Sales tax on materials (${sm.tax_pct}%)</span><b>${money2(sm.sales_tax)}</b></div>
+                <div class="line"><span>Contingency (${sm.contingency_pct}%)</span><b>${money2(sm.contingency)}</b></div>
+                <div class="line"><span>Overhead + profit (${sm.markup_pct}%)</span><b>${money2(sm.markup)}</b></div>
+                <div class="line grand"><span>Client price</span><b>${money2(sm.total)}</b></div>
+              </div>
+              <div class="pct-row mt">
+                <label class="field"><span>Markup %</span><input type="number" step="0.5" data-pct="markup_pct" value="${job.markup_pct ?? ""}" placeholder="${u.markup_pct}"></label>
+                <label class="field"><span>Contingency %</span><input type="number" step="0.5" data-pct="contingency_pct" value="${job.contingency_pct ?? ""}" placeholder="${u.contingency_pct}"></label>
+                <label class="field"><span>Tax %</span><input type="number" step="0.25" data-pct="tax_pct" value="${job.tax_pct ?? ""}" placeholder="${u.tax_pct}"></label>
+              </div>
+              <div class="dim" style="font-size:11.5px;margin-top:6px">Blank = your defaults from Settings.</div>
+            </div>
+            <div class="card">
+              <h3 class="mb">Client</h3>
+              <dl class="kv">
+                <dt>Name</dt><dd>${esc(job.client_name || "—")}</dd>
+                <dt>Phone</dt><dd>${job.client_phone ? `<a href="tel:${esc(job.client_phone)}">${esc(job.client_phone)}</a>` : "—"}</dd>
+                <dt>Email</dt><dd>${job.client_email ? `<a href="mailto:${esc(job.client_email)}">${esc(job.client_email)}</a>` : "—"}</dd>
+                <dt>Address</dt><dd>${job.address ? `<a target="_blank" rel="noopener" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(job.address)}">${esc(job.address)} ${ICON.ext}</a>` : "—"}</dd>
+                <dt>Created</dt><dd>${fmtDate(job.created_at, { month: "short", day: "numeric", year: "numeric" })}</dd>
+              </dl>
+            </div>
+            ${job.notes ? `<div class="card"><h3 class="mb">Notes</h3><div class="notes-box">${esc(job.notes)}</div></div>` : ""}
+          </div>
+        </div>`;
+
+      wireAgenda();
+      $("select[data-status]").onchange = async (e) => { job = (await api(`/api/jobs/${job.id}`, { method: "PUT", body: { status: e.target.value } })).job; draw(); toast("Status updated", "ok"); };
+      $("#edit").onclick = () => jobModal(job, (j) => { job = j; draw(); });
+      $("#del").onclick = async () => { if (await confirmDlg(`Delete "${job.title}" and its estimate? Scheduled events are kept but unlinked.`)) { await api(`/api/jobs/${job.id}`, { method: "DELETE" }); toast("Job deleted"); go("jobs"); } };
+      $("#addcalc").onclick = () => go(`calculators/${job.id}`);
+      $("#addev").onclick = () => eventModal({ job_id: job.id, location: job.address }, () => reload());
+      $("#proposal").onclick = () => proposalModal(job);
+      $("#addcustom").onclick = () => customLineModal(job, (j) => { job = j; draw(); });
+      $$("[data-delitem]").forEach((b) => (b.onclick = async () => { job = (await api(`/api/jobs/${job.id}/items/${b.dataset.delitem}`, { method: "DELETE" })).job; draw(); }));
+      $$("[data-delgroup]").forEach((b) => (b.onclick = async () => { if (await confirmDlg(`Remove all lines in "${b.dataset.delgroup}"?`)) { job = (await api(`/api/jobs/${job.id}/groups?label=${encodeURIComponent(b.dataset.delgroup)}`, { method: "DELETE" })).job; draw(); } }));
+      const saveItem = async (id, body) => { job = (await api(`/api/jobs/${job.id}/items/${id}`, { method: "PUT", body })).job; draw(); };
+      $$("[data-qty]").forEach((i) => (i.onchange = () => saveItem(i.dataset.qty, { qty: i.value })));
+      $$("[data-uc]").forEach((i) => (i.onchange = () => saveItem(i.dataset.uc, { unit_cost: i.value })));
+      $$("[data-pct]").forEach((i) => (i.onchange = async () => { job = (await api(`/api/jobs/${job.id}`, { method: "PUT", body: { [i.dataset.pct]: i.value } })).job; draw(); }));
+    };
+    const reload = async () => { job = (await api(`/api/jobs/${id}`)).job; draw(); };
+    draw();
+  }
+
+  function customLineModal(job, onSaved) {
+    const m = modal(`<h2>Add custom line</h2>
+      <form id="cf" class="form-grid">
+        <label class="field full"><span>Description *</span><input name="description" type="text" required placeholder="e.g. Dumpster rental, Tile allowance, Design fee"></label>
+        <label class="field"><span>Group</span><input name="group_label" type="text" value="Custom items" list="groups"><datalist id="groups">${[...new Set(job.items.map((i) => i.group_label))].map((g) => `<option value="${esc(g)}">`).join("")}</datalist></label>
+        <label class="field"><span>Category</span><select name="category">${["material", "labor", "permit", "equipment", "disposal", "other"].map((c) => `<option>${c}</option>`).join("")}</select></label>
+        <label class="field"><span>Qty</span><input name="qty" type="number" step="0.01" value="1"></label>
+        <label class="field"><span>Unit</span><input name="unit" type="text" value="ea"></label>
+        <label class="field"><span>Unit cost ($)</span><input name="unit_cost" type="number" step="0.01" required></label>
+      </form>
+      <div class="actions"><button class="btn" data-close>Cancel</button><button class="btn primary" id="save">Add line</button></div>`);
+    $("#save", m.el).onclick = async () => {
+      const f = $("#cf", m.el);
+      if (!f.reportValidity()) return;
+      const d = formData(f);
+      const res = await api(`/api/jobs/${job.id}/items`, { method: "POST", body: { items: [{ ...d, source: "custom" }], group_label: d.group_label, status_bump: true } });
+      m.close(); onSaved(res.job); toast("Line added", "ok");
+    };
+    setTimeout(() => $("[name=description]", m.el).focus(), 30);
+  }
+
+  function proposalModal(job) {
+    const u = S.user, sm = job.summary;
+    const groups = {};
+    job.items.forEach((it) => { (groups[it.group_label || "Other items"] ||= []).push(it); });
+    const today = new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+    modal(`<div class="row between no-print mb"><h2 style="margin:0">Proposal preview</h2><div class="row"><button class="btn" onclick="window.print()">Print / Save PDF</button><button class="btn" data-close>Close</button></div></div>
+      <div class="print-area"><div class="proposal">
+        <div class="row between" style="align-items:flex-start"><div><h1>${esc(u.business_name || "Proposal")}</h1><div class="small">${esc(u.address || "")}<br>${esc(u.phone || "")}${u.license_no ? `<br>${esc(u.license_no)}` : ""}</div></div>
+          <div class="right"><div style="font-size:18px;font-weight:700">PROPOSAL</div><div class="small">${esc(job.job_no)}<br>${today}</div></div></div>
+        <hr style="border:none;border-top:1px solid #ddd;margin:18px 0">
+        <div class="grid c2"><div><div class="small">PREPARED FOR</div><b>${esc(job.client_name || "")}</b><br>${esc(job.address || "")}<br>${esc(job.client_phone || "")}</div>
+          <div><div class="small">PROJECT</div><b>${esc(job.title)}</b><br>${esc(job.job_type || "")}</div></div>
+        <table class="mt"><thead><tr><th>Scope</th><th class="num">Amount</th></tr></thead><tbody>
+          ${Object.entries(groups).map(([g, items]) => { const sub = items.reduce((a, i) => a + i.total, 0); const share = sm.direct_cost ? sub / sm.direct_cost : 0;
+            const client = sub + sm.sales_tax * (items.filter((i) => i.category === "material").reduce((a, i) => a + i.total, 0) / (sm.by_category.material || 1)) + (sm.contingency + sm.markup) * share;
+            return `<tr><td><b>${esc(g)}</b><div class="small">${items.map((i) => esc(i.description)).join(", ")}</div></td><td class="num">${money2(client)}</td></tr>`; }).join("")}
+        </tbody></table>
+        <div class="totals mt" style="max-width:320px;margin-left:auto"><div class="line grand"><span>Total</span><b>${money2(sm.total)}</b></div></div>
+        <p class="small mt">Pricing includes materials, labor, applicable permits and NC sales tax on materials. Valid for 30 days. Payment: 30% deposit to schedule, 40% at rough-in / midpoint, 30% on completion. Changes to scope are priced as written change orders. ${esc(u.business_name || "Contractor")} carries general liability insurance; certificate available on request.</p>
+        <div class="grid c2 mt" style="margin-top:36px"><div>Accepted by: _______________________<div class="small">Client signature / date</div></div><div>${esc(u.name || "")}<div class="small">${esc(u.business_name || "")}</div></div></div>
+      </div></div>`, { wide: true });
+  }
+
+  // ------------------------------------------------------------ calculators
+  async function pageCalculators(jobIdArg) {
+    const cats = S.pricing.calculators;
+    let active = Object.keys(cats)[0], result = null, timer;
+    if (!S.jobs.length) await loadJobs();
+    const openJobs = S.jobs.filter((j) => !["complete", "lost"].includes(j.status));
+    main().innerHTML = head("Calculators", `Local pricing for ${esc(S.pricing.region.name)}. Build a quantity takeoff, then push it into a job.`) + `
+      <div class="grid side-l">
+        <div class="card pad-0" style="padding:8px"><div class="calc-list" id="clist"></div></div>
+        <div>
+          <div class="card"><div class="card-head"><h2 id="ctitle"></h2><span class="dim" style="font-size:12px">updates live</span></div><form id="cform" class="form-grid"></form></div>
+          <div class="card" id="cres"></div>
+        </div>
+      </div>`;
+    const list = $("#clist");
+    const descs = { concrete: "Slabs, pads, driveways", deck: "PT, cedar, composite", roofing: "Shingle or metal, tear-off", drywall: "Hang + finish", paint: "Interior / exterior", flooring: "LVP, tile, hardwood, carpet", fence: "Wood, vinyl, chain link, aluminum", framing: "Walls, sheathing", hourly: "Any trade by the hour" };
+    const drawList = () => {
+      list.innerHTML = Object.entries(cats).map(([k, c]) => `<button class="${k === active ? "active" : ""}" data-k="${k}">${esc(c.label)}<small>${descs[k] || ""}</small></button>`).join("");
+      $$("button", list).forEach((b) => (b.onclick = () => { active = b.dataset.k; drawList(); drawForm(); }));
+    };
+    const drawForm = () => {
+      const c = cats[active];
+      $("#ctitle").textContent = c.label;
+      $("#cform").innerHTML = c.fields.map((f) => {
+        if (f.type === "checkbox") return `<label class="check"><input type="checkbox" name="${f.name}" ${f.default ? "checked" : ""}> ${esc(f.label)}</label>`;
+        if (f.type === "select") return `<label class="field"><span>${esc(f.label)}</span><select name="${f.name}">${f.options.map((o) => { const [v, l] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(v)}" ${String(v) === String(f.default) ? "selected" : ""}>${esc(l)}</option>`; }).join("")}</select></label>`;
+        return `<label class="field"><span>${esc(f.label)}</span><input type="${f.type}" name="${f.name}" value="${esc(f.default)}" ${f.type === "number" ? 'step="any"' : ""}></label>`;
+      }).join("");
+      $("#cform").oninput = () => { clearTimeout(timer); timer = setTimeout(run, 180); };
+      run();
+    };
+    const groupLabel = () => {
+      const d = formData($("#cform")), c = cats[active];
+      const dims = ["length_ft", "width_ft"].filter((k) => d[k]).map((k) => d[k]).join("x");
+      const main_ = d.footprint_sqft ? `${d.footprint_sqft} sqft` : d.wall_sqft ? `${d.wall_sqft} sqft` : d.area_sqft ? `${d.area_sqft} sqft` : d.length_lf ? `${d.length_lf} lf` : d.wall_lf ? `${d.wall_lf} lf` : d.hours ? `${d.hours} hr ${titleCase(d.trade)}` : "";
+      return `${c.label}${dims ? ` ${dims}` : main_ ? ` ${main_}` : ""}`;
+    };
+    const run = async () => {
+      try { result = await api(`/api/calc/${active}`, { method: "POST", body: formData($("#cform")) }); } catch (err) { $("#cres").innerHTML = `<div class="error">${esc(err.message)}</div>`; return; }
+      const byCat = {};
+      result.items.forEach((i) => (byCat[i.category] = (byCat[i.category] || 0) + i.total));
+      const u = S.user, direct = result.subtotal;
+      const client = direct + (byCat.material || 0) * u.tax_pct / 100 + direct * u.contingency_pct / 100 + (direct * (1 + u.contingency_pct / 100)) * u.markup_pct / 100;
+      $("#cres").innerHTML = `
+        <div class="row between wrap mb"><div class="row wrap">${Object.entries(result.meta).map(([k, v]) => `<span class="meta-chip">${titleCase(k)} <b>${num(v)}</b></span>`).join("")}</div>
+          <div class="row"><select id="jobsel" style="width:240px"><option value="">Add to job…</option><option value="__new">+ New job from this</option>${openJobs.map((j) => `<option value="${j.id}" ${String(j.id) === String(jobIdArg) ? "selected" : ""}>${esc(j.job_no)} · ${esc(j.title)}</option>`).join("")}</select>
+            <button class="btn primary" id="addtojob">${ICON.plus} Add</button></div></div>
+        <div class="table-wrap"><table><thead><tr><th>Item</th><th>Type</th><th class="num">Qty</th><th>Unit</th><th class="num">Unit cost</th><th class="num">Total</th></tr></thead>
+          <tbody>${result.items.map((i) => `<tr><td>${esc(i.description)}</td><td><span class="cat ${i.category}">${i.category}</span></td><td class="num">${num(i.qty)}</td><td class="dim">${esc(i.unit)}</td><td class="num">${money2(i.unit_cost)}</td><td class="num">${money2(i.total)}</td></tr>`).join("")}</tbody></table></div>
+        <div class="grid c2 mt"><div class="totals">${Object.entries(byCat).map(([c, v]) => `<div class="line"><span><span class="cat ${c}">${c}</span></span><b>${money2(v)}</b></div>`).join("")}</div>
+          <div class="totals"><div class="line"><span>Direct cost</span><b>${money2(direct)}</b></div><div class="line"><span>With tax, ${u.contingency_pct}% contingency, ${u.markup_pct}% markup</span><b></b></div><div class="line grand"><span>Client price (approx.)</span><b>${money2(client)}</b></div></div></div>`;
+      $("#addtojob").onclick = async () => {
+        const v = $("#jobsel").value;
+        if (!v) return toast("Pick a job first", "err");
+        const push = async (jobId) => { await api(`/api/jobs/${jobId}/items`, { method: "POST", body: { items: result.items, group_label: groupLabel(), status_bump: true } }); toast("Added to job", "ok"); go(`jobs/${jobId}`); };
+        if (v === "__new") jobModal({ title: groupLabel(), job_type: cats[active].label }, (j) => push(j.id));
+        else push(v);
+      };
+    };
+    drawList(); drawForm();
+  }
+
+  // ------------------------------------------------------------ schedule
+  async function pageSchedule() {
+    if (!S.jobs.length) await loadJobs();
+    main().innerHTML = head("Schedule", "Site visits, work days, inspections and deliveries. Subscribe from your own calendar app below.",
+      `<button class="btn primary" id="newev">${ICON.plus} New event</button>`) + `
+      <div class="grid side"><div><div class="card" id="calcard"></div></div>
+        <div><div class="card"><div class="card-head"><h3>Next up</h3></div><div id="upcoming"></div></div>
+        <div class="card" id="sync"></div></div></div>`;
+    $("#newev").onclick = () => eventModal({}, drawAll);
+    const drawCal = async () => {
+      const m = S.calMonth, first = new Date(m), last = new Date(m.getFullYear(), m.getMonth() + 1, 0);
+      const gridStart = new Date(first); gridStart.setDate(first.getDate() - first.getDay());
+      const gridEnd = new Date(last); gridEnd.setDate(last.getDate() + (6 - last.getDay()) + 1);
+      const { events } = await api(`/api/events?start=${ymd(gridStart)}&end=${ymd(gridEnd)}`);
+      const byDay = {};
+      events.forEach((e) => { (byDay[e.start.slice(0, 10)] ||= []).push(e); });
+      const today = ymd(new Date());
+      let cells = "";
+      for (let d = new Date(gridStart); d < gridEnd; d.setDate(d.getDate() + 1)) {
+        const k = ymd(d), evs = byDay[k] || [], other = d.getMonth() !== m.getMonth();
+        cells += `<div class="day ${other ? "other" : ""} ${k === today ? "today" : ""}" data-day="${k}"><span class="n">${d.getDate()}</span>
+          ${evs.slice(0, 3).map((e) => `<div class="ev ${e.type}" data-ev='${esc(JSON.stringify(e))}' title="${esc(e.title)}">${e.all_day ? "" : `<span class="dim">${fmtTime(e.start).replace(":00", "")}</span> `}${esc(e.title)}</div>`).join("")}
+          ${evs.length > 3 ? `<div class="ev-more">+${evs.length - 3} more</div>` : ""}${evs.length ? `<span class="count">${evs.length} event${evs.length > 1 ? "s" : ""}</span>` : ""}</div>`;
+      }
+      $("#calcard").innerHTML = `<div class="cal-head"><button class="btn sm" id="prev">‹ Prev</button><h2>${m.toLocaleDateString("en-US", { month: "long", year: "numeric" })}</h2><div class="row"><button class="btn sm" id="today">Today</button><button class="btn sm" id="next">Next ›</button></div></div>
+        <div class="cal">${["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => `<div class="dow">${d}</div>`).join("")}${cells}</div>
+        <div class="legend mt">${Object.entries(TYPE_LABEL).map(([k, v]) => `<span><span class="dot ${k}"></span>${v}</span>`).join("")}</div>`;
+      $("#prev").onclick = () => { S.calMonth = new Date(m.getFullYear(), m.getMonth() - 1, 1); drawCal(); };
+      $("#next").onclick = () => { S.calMonth = new Date(m.getFullYear(), m.getMonth() + 1, 1); drawCal(); };
+      $("#today").onclick = () => { S.calMonth = startOfMonth(new Date()); drawCal(); };
+      $$(".day").forEach((el) => (el.onclick = (e) => { if (e.target.closest(".ev")) return; eventModal({ start: `${el.dataset.day}T08:00` }, drawAll); }));
+      $$(".ev[data-ev]").forEach((el) => (el.onclick = () => eventModal(JSON.parse(el.dataset.ev), drawAll)));
+    };
+    const drawUpcoming = async () => {
+      const { events } = await api(`/api/events?start=${ymd(new Date())}`);
+      $("#upcoming").innerHTML = agenda(events.slice(0, 8));
+      $$("#upcoming .agenda .item").forEach((el) => (el.onclick = (e) => { if (e.target.tagName === "A") return; eventModal(JSON.parse(el.dataset.ev), drawAll); }));
+    };
+    const drawSync = () => {
+      const url = `${location.origin}/calendar/${S.user.ics_token}.ics`;
+      $("#sync").innerHTML = `<h3 class="mb">Link to your calendar</h3>
+        <p class="muted" style="font-size:13px">Subscribe once and every event here shows up in Google Calendar, Apple Calendar or Outlook on your phone. It refreshes on its own.</p>
+        <div class="row"><div class="code grow" id="icsurl">${esc(url)}</div><button class="btn sm" id="copy">Copy</button></div>
+        <ol class="steps mt">
+          <li><b>Google Calendar:</b> Other calendars → <b>+</b> → <i>From URL</i> → paste.</li>
+          <li><b>iPhone:</b> Settings → Calendar → Accounts → Add Subscribed Calendar → paste.</li>
+          <li><b>Outlook:</b> Add calendar → Subscribe from web → paste.</li>
+        </ol>
+        <div class="banner mt"><b>Next step for the real build:</b> two-way Google Calendar sync (OAuth) so events created on his phone flow back here, plus SMS reminders to clients the day before a site visit.</div>`;
+      $("#copy").onclick = async () => { try { await navigator.clipboard.writeText(url); toast("Link copied", "ok"); } catch (_) { toast("Select and copy the link manually"); } };
+    };
+    const drawAll = () => { drawCal(); drawUpcoming(); };
+    drawAll(); drawSync();
+  }
+
+  function googleCalUrl(e) {
+    const fmt = (iso, allDay) => { const d = new Date(iso); return allDay ? ymd(d).replace(/-/g, "") : `${ymd(d).replace(/-/g, "")}T${String(d.getHours()).padStart(2, "0")}${String(d.getMinutes()).padStart(2, "0")}00`; };
+    const end = e.end || new Date(new Date(e.start).getTime() + (e.all_day ? 864e5 : 72e5)).toISOString();
+    const p = new URLSearchParams({ action: "TEMPLATE", text: (e.job_no ? `[${e.job_no}] ` : "") + e.title, dates: `${fmt(e.start, e.all_day)}/${fmt(end, e.all_day)}`, details: `${e.job_title ? `Job: ${e.job_title}\n` : ""}${e.notes || ""}`, location: e.location || "" });
+    return `https://calendar.google.com/calendar/render?${p}`;
+  }
+
+  function eventModal(ev = {}, onSaved) {
+    const isEdit = !!ev.id;
+    const start = ev.start ? ev.start.slice(0, 16) : `${ymd(new Date())}T08:00`;
+    const end = ev.end ? ev.end.slice(0, 16) : "";
+    const m = modal(`<h2>${isEdit ? "Edit event" : "Schedule something"}</h2>
+      <form id="ef" class="form-grid">
+        <label class="field full"><span>Title *</span><input name="title" type="text" required value="${esc(ev.title || "")}" placeholder="e.g. Site visit + measure"></label>
+        <label class="field"><span>Type</span><select name="type">${S.pricing.event_types.map((t) => `<option value="${t}" ${(ev.type || "work") === t ? "selected" : ""}>${TYPE_LABEL[t]}</option>`).join("")}</select></label>
+        <label class="field"><span>Job</span><select name="job_id"><option value="">— none —</option>${S.jobs.map((j) => `<option value="${j.id}" ${String(ev.job_id) === String(j.id) ? "selected" : ""}>${esc(j.job_no)} · ${esc(j.title)}</option>`).join("")}</select></label>
+        <label class="field"><span>Start</span><input name="start" type="datetime-local" required value="${start}"></label>
+        <label class="field"><span>End</span><input name="end" type="datetime-local" value="${end}"></label>
+        <label class="check full"><input type="checkbox" name="all_day" ${ev.all_day ? "checked" : ""}> All day</label>
+        <label class="field full"><span>Location</span><input name="location" type="text" value="${esc(ev.location || "")}" placeholder="Defaults to the job address in the calendar feed"></label>
+        <label class="field full"><span>Notes</span><textarea name="notes">${esc(ev.notes || "")}</textarea></label>
+      </form>
+      <div class="actions" style="justify-content:space-between">
+        <div class="row">${isEdit ? `<button class="btn ghost danger" id="del">${ICON.trash} Delete</button><a class="btn ghost" target="_blank" rel="noopener" href="${googleCalUrl(ev)}">${ICON.ext} Add to Google Calendar</a>` : ""}</div>
+        <div class="row"><button class="btn" data-close>Cancel</button><button class="btn primary" id="save">${isEdit ? "Save" : "Add"}</button></div></div>`);
+    $("#save", m.el).onclick = async () => {
+      const f = $("#ef", m.el);
+      if (!f.reportValidity()) return;
+      const d = formData(f);
+      d.job_id = d.job_id ? +d.job_id : null;
+      if (!d.end) delete d.end;
+      try {
+        await (isEdit ? api(`/api/events/${ev.id}`, { method: "PUT", body: d }) : api("/api/events", { method: "POST", body: d }));
+        m.close(); toast(isEdit ? "Event saved" : "Added to schedule", "ok");
+        if (onSaved) onSaved(); else render();
+      } catch (err) { toast(err.message, "err"); }
+    };
+    const del = $("#del", m.el);
+    if (del) del.onclick = async () => { await api(`/api/events/${ev.id}`, { method: "DELETE" }); m.close(); toast("Event deleted"); if (onSaved) onSaved(); else render(); };
+    setTimeout(() => $("[name=title]", m.el).focus(), 30);
+  }
+
+  // ------------------------------------------------------------ price book
+  function pagePriceBook() {
+    const { region, book } = S.pricing;
+    const overrides = { ...(S.user.price_overrides || {}) };
+    const sections = { labor: "Labor rates ($/hr, burdened)", permits: "Permits (New Hanover County)", disposal: "Disposal", concrete: "Concrete", deck: "Decks", roofing: "Roofing", drywall: "Drywall", paint: "Painting", flooring: "Flooring ($/sqft material + labor)", fence: "Fencing ($/lf material + labor)", framing: "Framing", defaults: "Estimate defaults" };
+    main().innerHTML = head("Price book", `${esc(region.name)} · edit any number and it flows into every calculator`,
+      `<button class="btn" id="reset">Reset all to defaults</button><button class="btn primary" id="save">Save changes</button>`) + `
+      <div class="banner mb"><b>Draft numbers.</b> These are planning figures in the ballpark for the Wilmington market. Verify against real quotes (Lowe's, 84 Lumber, Builders FirstSource, local ready-mix) before sending a client anything.</div>
+      <div class="card mb"><h3 class="mb">Local notes</h3><ul class="steps">${region.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>
+        <div class="row wrap mt"><span class="meta-chip">Sales tax <b>${region.sales_tax_pct}%</b></span><span class="meta-chip">Wind zone <b>${region.wind_zone_mph} mph</b></span><span class="meta-chip">Frost depth <b>${region.frost_depth_in} in</b></span></div></div>
+      <div class="grid c2">${Object.entries(sections).map(([sec, label]) => `
+        <div class="card pad-0"><div class="card-head" style="padding:14px 18px 0"><h3>${label}</h3></div>
+          <table><tbody>${Object.entries(book[sec]).map(([key, v]) => {
+            const fields = Object.keys(v).filter((k) => k !== "label");
+            return `<tr><td>${esc(v.label)}<div class="dim mono" style="font-size:10.5px">${sec}.${key}</div></td>
+              <td class="right">${fields.map((f) => `<span class="dim" style="font-size:11px;margin-left:8px">${fields.length > 1 ? f : ""}</span> <input class="price-input ${overrides[`${sec}.${key}`]?.[f] !== undefined ? "changed" : ""}" type="number" step="any" data-path="${sec}.${key}" data-f="${f}" value="${v[f]}">`).join("")}</td></tr>`; }).join("")}
+          </tbody></table></div>`).join("")}</div>`;
+    const dirty = {};
+    $$(".price-input").forEach((i) => (i.oninput = () => { (dirty[i.dataset.path] ||= {})[i.dataset.f] = i.value; i.classList.add("changed"); }));
+    $("#save").onclick = async () => {
+      const merged = { ...overrides };
+      Object.entries(dirty).forEach(([p, vals]) => (merged[p] = { ...(merged[p] || {}), ...vals }));
+      const { user } = await api("/api/settings", { method: "PUT", body: { price_overrides: merged } });
+      S.user = user; await loadPricing(); toast("Price book saved", "ok"); render();
+    };
+    $("#reset").onclick = async () => {
+      if (!(await confirmDlg("Reset every price back to the built-in Wilmington defaults?"))) return;
+      const { user } = await api("/api/settings", { method: "PUT", body: { price_overrides: {} } });
+      S.user = user; await loadPricing(); toast("Defaults restored"); render();
+    };
+  }
+
+  // ------------------------------------------------------------ settings
+  function pageSettings() {
+    const u = S.user;
+    main().innerHTML = head("Settings", "Business profile and estimate defaults. These print on proposals.") + `
+      <div class="grid c2">
+        <div class="card"><h3 class="mb">Business</h3>
+          <form id="bf" class="stack">
+            <label class="field"><span>Business name</span><input name="business_name" type="text" value="${esc(u.business_name || "")}"></label>
+            <label class="field"><span>Your name</span><input name="name" type="text" value="${esc(u.name || "")}"></label>
+            <label class="field"><span>Phone</span><input name="phone" type="text" value="${esc(u.phone || "")}"></label>
+            <label class="field"><span>NC license #</span><input name="license_no" type="text" value="${esc(u.license_no || "")}" placeholder="NC GC license (required over $40,000)"></label>
+            <label class="field"><span>Business address</span><input name="address" type="text" value="${esc(u.address || "")}"></label>
+            <button class="btn primary" style="align-self:flex-start">Save business</button>
+          </form></div>
+        <div>
+          <div class="card"><h3 class="mb">Estimate defaults</h3>
+            <form id="df" class="stack">
+              <div class="pct-row">
+                <label class="field"><span>Markup % (overhead + profit)</span><input name="markup_pct" type="number" step="0.5" value="${u.markup_pct}"></label>
+                <label class="field"><span>Contingency %</span><input name="contingency_pct" type="number" step="0.5" value="${u.contingency_pct}"></label>
+                <label class="field"><span>Sales tax % (materials)</span><input name="tax_pct" type="number" step="0.25" value="${u.tax_pct}"></label>
+              </div>
+              <p class="dim" style="font-size:12px">Typical residential remodel markup runs 20–35%. Any job can override these on its own page.</p>
+              <button class="btn primary" style="align-self:flex-start">Save defaults</button>
+            </form></div>
+          <div class="card"><h3 class="mb">Account</h3>
+            <form id="pf" class="stack">
+              <label class="field"><span>Email</span><input type="email" value="${esc(u.email)}" disabled></label>
+              <label class="field"><span>New password</span><input name="new_password" type="password" minlength="8" autocomplete="new-password" placeholder="8+ characters"></label>
+              <div class="row"><button class="btn">Change password</button><button class="btn ghost" type="button" id="rotate">Reset calendar link</button></div>
+            </form>
+            <p class="dim mt" style="font-size:12px">Resetting the calendar link disconnects any calendar app that subscribed with the old one.</p></div>
+        </div></div>`;
+    const save = (form, msg) => async (e) => { e.preventDefault(); const { user } = await api("/api/settings", { method: "PUT", body: formData(form) }); S.user = user; toast(msg, "ok"); render(); };
+    $("#bf").onsubmit = save($("#bf"), "Business saved");
+    $("#df").onsubmit = save($("#df"), "Defaults saved");
+    $("#pf").onsubmit = async (e) => { e.preventDefault(); const pw = $("[name=new_password]").value; if (pw.length < 8) return toast("Password must be 8+ characters", "err"); await api("/api/settings", { method: "PUT", body: { new_password: pw } }); toast("Password changed", "ok"); $("[name=new_password]").value = ""; };
+    $("#rotate").onclick = async () => { const { user } = await api("/api/settings", { method: "PUT", body: { rotate_ics_token: true } }); S.user = user; toast("Calendar link reset"); };
+  }
+
+  boot().catch((e) => { root.innerHTML = `<div class="auth-wrap"><div class="card error">Could not reach the server: ${esc(e.message)}</div></div>`; });
+})();
