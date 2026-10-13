@@ -62,6 +62,10 @@ CREATE TABLE IF NOT EXISTS line_items (
   description TEXT NOT NULL, category TEXT NOT NULL, qty REAL, unit TEXT,
   unit_cost REAL, total REAL, sort_order INTEGER DEFAULT 0, created_at TEXT
 );
+CREATE TABLE IF NOT EXISTS materials (
+  id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, section TEXT, label TEXT NOT NULL,
+  unit TEXT DEFAULT 'ea', cost REAL DEFAULT 0, category TEXT DEFAULT 'material', created_at TEXT
+);
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, job_id INTEGER,
   title TEXT NOT NULL, type TEXT DEFAULT 'work', start TEXT NOT NULL, end TEXT,
@@ -217,12 +221,75 @@ def update_settings():
 
 # ------------------------------------------------------------------ pricing
 
+def custom_materials(uid):
+    rows = db().execute("SELECT * FROM materials WHERE user_id=? ORDER BY section, label", (uid,)).fetchall()
+    return [{"id": f"custom.{r['id']}", "db_id": r["id"], "section": r["section"] or "My materials", "label": r["label"],
+             "unit": r["unit"], "cost": r["cost"], "category": r["category"], "builtin": False} for r in rows]
+
+
 @app.get("/api/pricing")
 @login_required
 def get_pricing():
     u = current_user()
-    return jsonify(region=pricing.REGION, book=pricing.merged_prices(overrides_for(u)),
-                   calculators=pricing.calculator_catalog(), statuses=JOB_STATUSES, event_types=EVENT_TYPES)
+    book = pricing.merged_prices(overrides_for(u))
+    return jsonify(region=pricing.REGION, book=book, calculators=pricing.calculator_catalog(),
+                   materials=pricing.material_catalog(book) + custom_materials(u["id"]),
+                   statuses=JOB_STATUSES, event_types=EVENT_TYPES)
+
+
+# ------------------------------------------------------------------ custom materials
+
+MATERIAL_CATEGORIES = ("material", "labor", "equipment", "disposal", "other")
+
+
+def _material_fields(d):
+    label = (d.get("label") or "").strip()
+    if not label:
+        return None, "Name required"
+    try:
+        cost = float(d.get("cost") or 0)
+    except (TypeError, ValueError):
+        return None, "Cost must be a number"
+    cat = d.get("category") if d.get("category") in MATERIAL_CATEGORIES else "material"
+    return {"section": (d.get("section") or "My materials").strip(), "label": label,
+            "unit": (d.get("unit") or "ea").strip(), "cost": cost, "category": cat}, None
+
+
+@app.post("/api/materials")
+@login_required
+def add_material():
+    u = current_user()
+    f, err = _material_fields(request.get_json(force=True) or {})
+    if err:
+        return jsonify(error=err), 400
+    db().execute("INSERT INTO materials (user_id,section,label,unit,cost,category,created_at) VALUES (?,?,?,?,?,?,?)",
+                 (u["id"], f["section"], f["label"], f["unit"], f["cost"], f["category"], now()))
+    db().commit()
+    return jsonify(materials=custom_materials(u["id"])), 201
+
+
+@app.put("/api/materials/<int:mid>")
+@login_required
+def update_material(mid):
+    u = current_user()
+    if not db().execute("SELECT id FROM materials WHERE id=? AND user_id=?", (mid, u["id"])).fetchone():
+        abort(404)
+    f, err = _material_fields(request.get_json(force=True) or {})
+    if err:
+        return jsonify(error=err), 400
+    db().execute("UPDATE materials SET section=?, label=?, unit=?, cost=?, category=? WHERE id=?",
+                 (f["section"], f["label"], f["unit"], f["cost"], f["category"], mid))
+    db().commit()
+    return jsonify(materials=custom_materials(u["id"]))
+
+
+@app.delete("/api/materials/<int:mid>")
+@login_required
+def delete_material(mid):
+    u = current_user()
+    db().execute("DELETE FROM materials WHERE id=? AND user_id=?", (mid, u["id"]))
+    db().commit()
+    return jsonify(materials=custom_materials(u["id"]))
 
 
 @app.post("/api/calc/<name>")
@@ -554,7 +621,16 @@ def seed_demo(conn):
     uid = conn.execute(
         "INSERT INTO users (email,password_hash,name,business_name,phone,license_no,address,ics_token,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
         ("demo@example.com", generate_password_hash("demo1234"), "Demo Owner", "Demo Contracting Co.",
-         "(910) 555-0142", "NC GC #00000 (unlimited)", "Wilmington, NC 28401", secrets.token_urlsafe(24), now())).lastrowid
+         "(910) 555-0142", "NC GC #00000 (limited)", "Wilmington, NC 28401", secrets.token_urlsafe(24), now())).lastrowid
+
+    for sec, label, unit, cost in [
+        ("Lumber", "Cedar 1x6 tongue-and-groove porch ceiling, per lf", "lf", 2.95),
+        ("Hardware", "Black exterior lag screw, 3/8 x 6 in", "ea", 1.35),
+        ("Drywall", "Moisture-resistant 1/2 in greenboard, per sq ft", "sqft", 0.78),
+        ("Misc", "Rosin paper + floor protection, per room", "ea", 24.0),
+    ]:
+        conn.execute("INSERT INTO materials (user_id,section,label,unit,cost,category,created_at) VALUES (?,?,?,?,?,?,?)",
+                     (uid, sec, label, unit, cost, "material", now()))
 
     def job(title, client, phone, addr, jtype, status, notes=""):
         n = conn.execute("SELECT COUNT(*) FROM jobs WHERE user_id=?", (uid,)).fetchone()[0] + 1
@@ -574,25 +650,29 @@ def seed_demo(conn):
     add_calc(j1, "deck", {"length_ft": 18, "width_ft": 14, "height_ft": 4, "material": "composite", "stairs": 1, "permit": 1}, "Deck 18x14 composite")
     add_calc(j1, "hourly", {"trade": "electrician", "hours": 5, "materials": 420, "materials_desc": "Low-voltage deck lighting kit"}, "Deck lighting")
 
-    j2 = job("Re-roof, architectural shingle", "Marcus Lee", "(910) 555-0133", "2207 Oleander Dr, Wilmington, NC 28403",
-             "Roofing", "estimating", "Two layers of 3-tab currently. Some soft decking near rear valley.")
-    add_calc(j2, "roofing", {"footprint_sqft": 2100, "pitch": "6/12", "material": "shingle_arch", "tearoff_layers": 2, "bad_decking_sheets": 6}, "Roof 2100 sqft 6/12")
+    j2 = job("Bonus room finish-out over garage", "Marcus Lee", "(910) 555-0133", "2207 Oleander Dr, Wilmington, NC 28403",
+             "Interior", "estimating", "Currently open studs. Wants a closet and a door to the hall. Electrical by his cousin.")
+    add_calc(j2, "framing", {"wall_lf": 22, "height_ft": 8, "stud_size": "2x4", "openings": 2, "corners": 3}, "Closet + hall wall framing")
+    add_calc(j2, "drywall", {"wall_sqft": 1040, "ceiling_sqft": 380, "corner_lf": 32, "thickness": "half"}, "Drywall 1,040 wall / 380 ceiling")
+    add_calc(j2, "trim", {"baseboard_lf": 128, "base_type": "mdf", "doors": 2, "door_type": "hollow", "shoe": 0}, "Trim + 2 doors")
+    add_calc(j2, "paint", {"wall_sqft": 1040, "ceiling_sqft": 380, "trim_lf": 128, "doors": 2, "coats": 2, "primer": 1}, "Paint bonus room")
 
-    j3 = job("Garage slab and framing", "Tom and Ana Reyes", "(910) 555-0177", "815 Carolina Beach Rd, Wilmington, NC 28412",
-             "Addition", "approved", "Detached 24x24 garage. Owner pulling electrical separately.")
-    add_calc(j3, "concrete", {"length_ft": 24, "width_ft": 24, "thickness_in": 4, "psi": "4000", "reinforcement": "rebar", "gravel_base": 1, "vapor_barrier": 1}, "Garage slab 24x24")
-    add_calc(j3, "framing", {"wall_lf": 96, "height_ft": 9, "stud_size": "2x6", "stud_spacing_in": 16, "openings": 3, "sheathing": 1}, "Garage walls 2x6")
-    conn.execute("INSERT INTO line_items (job_id,source,group_label,description,category,qty,unit,unit_cost,total,sort_order,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                 (j3, "custom", "Permits", "Building permit (New Hanover County), valuation based", "permit", 1, "ea", 485.0, 485.0, 99, now()))
+    j3 = job("Garage partition wall + storage room", "Tom and Ana Reyes", "(910) 555-0177", "815 Carolina Beach Rd, Wilmington, NC 28412",
+             "Framing", "approved", "Wall on slab, PT bottom plate. 5/8 Type X on the house side. Owner supplies the door.")
+    add_calc(j3, "framing", {"wall_lf": 28, "height_ft": 9, "stud_size": "2x4", "openings": 1, "corners": 1, "pt_bottom_plate": 1}, "Partition wall 28 lf")
+    add_calc(j3, "drywall", {"wall_sqft": 504, "ceiling_sqft": 0, "corner_lf": 18, "thickness": "58"}, "Drywall 5/8 both sides")
+    add_calc(j3, "trim", {"baseboard_lf": 0, "doors": 0, "cased_openings": 1}, "Case the door opening")
 
-    j4 = job("Kitchen refresh: LVP, paint, drywall patch", "Denise Carter", "(910) 555-0161", "1308 Market St, Wilmington, NC 28401",
-             "Interior", "lead", "Called from yard sign. Wants estimate before Thanksgiving.")
-    add_calc(j4, "flooring", {"area_sqft": 340, "type": "lvp", "transitions": 3, "demo": 1, "baseboard_lf": 70}, "Kitchen + dining LVP")
-    add_calc(j4, "paint", {"wall_sqft": 620, "ceiling_sqft": 340, "trim_lf": 70, "doors": 2, "coats": 2, "grade": "prem"}, "Paint kitchen/dining")
+    j4 = job("Screened porch deck rebuild", "Denise Carter", "(910) 555-0161", "1308 Market St, Wilmington, NC 28401",
+             "Deck", "lead", "Existing PT deck is rotted at the ledger. Keep the screen frame if possible. Wants estimate before Thanksgiving.")
+    add_calc(j4, "deck", {"length_ft": 14, "width_ft": 12, "height_ft": 2, "material": "pt", "stairs": 1, "demo": 1, "permit": 1}, "Deck 14x12 PT rebuild")
 
-    j5 = job("Privacy fence", "Kyle Brandt", "(910) 555-0108", "5 Shipyard Blvd, Wilmington, NC 28412",
-             "Fence", "complete", "Done 2 weeks ago. Ask for Google review.")
-    add_calc(j5, "fence", {"length_lf": 184, "type": "wood_privacy_6", "walk_gates": 2, "demo": 1}, "Fence 184 lf")
+    j5 = job("Closet + laundry room build-out", "Kyle Brandt", "(910) 555-0108", "5 Shipyard Blvd, Wilmington, NC 28412",
+             "Interior", "complete", "Done 2 weeks ago. Ask for Google review.")
+    add_calc(j5, "framing", {"wall_lf": 18, "height_ft": 8, "openings": 2, "corners": 2}, "Framing 18 lf")
+    add_calc(j5, "drywall", {"wall_sqft": 560, "ceiling_sqft": 90, "corner_lf": 24}, "Drywall")
+    add_calc(j5, "trim", {"baseboard_lf": 64, "doors": 2, "door_type": "solid"}, "Trim + 2 solid doors")
+    add_calc(j5, "paint", {"wall_sqft": 560, "ceiling_sqft": 90, "trim_lf": 64, "doors": 2, "primer": 1}, "Paint")
 
     today = date.today()
     def ev(job_id, title, etype, day_offset, hour, dur_h, loc="", notes="", all_day=0):
@@ -601,15 +681,15 @@ def seed_demo(conn):
         conn.execute("INSERT INTO events (user_id,job_id,title,type,start,end,all_day,location,notes,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
                      (uid, job_id, title, etype, start.isoformat(timespec="minutes"), end.isoformat(timespec="minutes"), all_day, loc, notes, now()))
 
-    ev(j4, "Site visit + measure", "site_visit", 1, 9, 1, "1308 Market St", "Bring laser measure, LVP samples")
-    ev(j3, "Concrete pour: garage slab", "work", 2, 7, 6, "815 Carolina Beach Rd", "Truck at 7:30. Pump not needed.")
-    ev(j3, "Footing/slab inspection", "inspection", 1, 13, 1, "815 Carolina Beach Rd", "COAST inspection window 1-3pm")
-    ev(j3, "Lumber delivery (84 Lumber)", "delivery", 4, 8, 1, "815 Carolina Beach Rd")
-    ev(j3, "Frame garage walls", "work", 5, 7, 9, "815 Carolina Beach Rd")
-    ev(j3, "Frame garage walls (day 2)", "work", 6, 7, 9, "815 Carolina Beach Rd")
+    ev(j4, "Site visit + measure porch", "site_visit", 1, 9, 1, "1308 Market St", "Bring moisture meter, check ledger + joists")
+    ev(j3, "Frame garage partition wall", "work", 2, 7, 8, "815 Carolina Beach Rd", "PT plate, Tapcons, 5/8 board on house side")
+    ev(j3, "Lumber + drywall delivery (84 Lumber)", "delivery", 2, 7, 1, "815 Carolina Beach Rd")
+    ev(j3, "Hang + tape drywall", "work", 3, 7, 8, "815 Carolina Beach Rd")
+    ev(j3, "Second coat + sand", "work", 4, 8, 4, "815 Carolina Beach Rd")
     ev(j1, "Deck proposal walkthrough with Sarah", "meeting", 3, 17, 1, "412 Pine Grove Dr")
-    ev(j2, "Roof inspection + drone photos", "site_visit", 7, 10, 2, "2207 Oleander Dr")
+    ev(j2, "Measure bonus room, confirm door swing", "site_visit", 5, 10, 1, "2207 Oleander Dr")
     ev(None, "Shop day: sharpen blades, truck oil change", "other", 8, 8, 4, "Shop")
+    ev(j1, "Deck footing inspection", "inspection", 12, 13, 1, "412 Pine Grove Dr", "COAST inspection window 1-3pm")
     ev(j1, "Deck build week", "work", 12, 7, 9, "412 Pine Grove Dr", "Pending client approval", all_day=1)
     conn.commit()
 

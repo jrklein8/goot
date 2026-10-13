@@ -275,7 +275,7 @@ select.status-select { width: auto; padding: 4px 26px 4px 8px; font-size: 12px; 
 /* ---------- responsive ---------- */
 @media (max-width: 1000px) {
   .grid.c4 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .grid.side, .grid.side-l { grid-template-columns: 1fr; }
+  .grid.side, .grid.side-l { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 760px) {
   #app { flex-direction: column; }
@@ -286,7 +286,7 @@ select.status-select { width: auto; padding: 4px 26px 4px 8px; font-size: 12px; 
   .nav a span { display: none; }
   .sidebar .spacer, .userbox { display: none; }
   .main { padding: 18px 16px 50px; }
-  .grid.c2, .grid.c3, .grid.c4 { grid-template-columns: 1fr; }
+  .grid.c2, .grid.c3, .grid.c4 { grid-template-columns: minmax(0, 1fr); }
   .form-grid { grid-template-columns: 1fr; }
   .cal .day { min-height: 70px; }
   .ev { display: none; }

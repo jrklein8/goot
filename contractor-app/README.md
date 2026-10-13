@@ -30,10 +30,13 @@ Every record is scoped to the signed-in user.
 an estimate made of line items, and its own schedule. Status can be changed
 inline from the job list.
 
-**Calculators** - quantity takeoffs priced from the Wilmington price book:
-concrete slab, deck, roofing, drywall, painting, flooring, fence, wall
-framing, and trade labor by the hour. Results update live and can be pushed
-into any open job as a named group of line items (or spin up a new job).
+**Calculators** - real material takeoffs priced from the Wilmington price
+book, focused on what he actually does: deck (joists, beams, posts,
+footings, decking, hangers, ties, rail, stairs), wall framing (studs,
+plates, headers, nails, sheathing), drywall (board, mud, screws, finish),
+painting, trim & doors (base, casing, crown, prehung doors, hardware), and
+trade labor by the hour. Results update live and can be pushed into any
+open job as a named group of line items (or spin up a new job).
 
 **Estimate** - line items grouped by where they came from, with inline qty
 and unit-cost edits, custom lines, category subtotals, NC sales tax on
@@ -41,10 +44,13 @@ materials only, contingency, and overhead + profit markup. Per-job overrides
 for the percentages. A printable client proposal hides unit costs and shows
 grouped scope pricing.
 
-**Price book** - every rate the calculators use (labor $/hr, permits,
-disposal, materials) in one place with per-user overrides and a reset.
-Flags the Wilmington specifics: 7% sales tax, 130 mph wind zone, shallow
-frost line, COAST permitting.
+**Price book** - lumber, hardware, drywall, trim, paint, labor rates,
+permits and disposal in one place with per-user overrides and a reset.
+An **Add material** button lets him put in anything the built-ins don't
+cover (his own section, unit, cost), and a **From price book** picker on
+every job drops any material, built-in or his own, onto the estimate with
+a quantity. Flags the Wilmington specifics: 7% sales tax, 130 mph wind
+zone, deck permits, Type X in garages.
 
 **Schedule** - month calendar with typed events (site visit, work day,
 inspection, delivery, meeting), linked to jobs. A private `.ics` feed URL
