@@ -76,7 +76,8 @@ def market_refresh(overrides, meta):
     applied_before = (meta or {}).get("applied", {})
     series_before = (meta or {}).get("series", {})
     manual_before = set((meta or {}).get("manual", []))
-    new_meta = {"updated": datetime.now().isoformat(timespec="seconds"), "baseline": MARKET_BASELINE, "series": {}, "applied": {}, "manual": []}
+    applied_len_before = (meta or {}).get("applied_lengths", {})
+    new_meta = {"updated": datetime.now().isoformat(timespec="seconds"), "baseline": MARKET_BASELINE, "series": {}, "applied": {}, "manual": [], "applied_lengths": {}}
     report = []
     latest_month = None
     for sec, cfg in MARKET_INDEX.items():
@@ -108,6 +109,22 @@ def market_refresh(overrides, meta):
             overrides[path] = {**(overrides.get(path) or {}), "cost": new_cost}
             new_meta["applied"][path] = new_cost
             changed += 1
+            # stock lengths: his table scales with the index from where it was; untouched built-ins rescale from base
+            cur_len = (overrides.get(path) or {}).get("lengths")
+            if cur_len is not None:
+                prev = applied_len_before.get(path) or {}
+                new_len = {}
+                for Lk, c in cur_len.items():
+                    if c in (None, ""):
+                        continue
+                    Lk = f"{float(Lk):g}"
+                    new_len[Lk] = round(float(c) * since_last, 2) if (Lk not in prev or abs(float(c) - prev[Lk]) > 0.004 or path in manual_before) else round(float(c) * since_last, 2)
+                overrides[path]["lengths"] = new_len
+                new_meta["applied_lengths"][path] = new_len
+            elif v.get("lengths"):
+                new_len = {f"{float(Lk):g}": round(c * factor, 2) for Lk, c in v["lengths"].items()}
+                overrides[path]["lengths"] = new_len
+                new_meta["applied_lengths"][path] = new_len
         report.append({"section": sec, "label": cfg["label"], "change_pct": change_pct, "keys": changed,
                        "since_last_pct": round((since_last - 1) * 100, 1), "latest_date": latest_date})
     new_meta["latest_month"] = datetime.strptime(latest_month, "%Y-%m-%d").strftime("%b %Y") if latest_month else None
@@ -121,9 +138,15 @@ def current_unit_price(book, price_key, custom_lookup=None):
     sec, _, key = price_key.partition(".")
     if sec == "custom":
         return custom_lookup(key) if custom_lookup else None
+    key, _, length = key.partition("@")
     v = (book.get(sec) or {}).get(key)
     if not v:
         return None
+    if length:
+        try:
+            return (v.get("lengths") or {}).get(float(length))
+        except ValueError:
+            return None
     return v.get("rate") if sec == "labor" else v.get("cost")
 
 PRICE_BOOK = {
@@ -217,21 +240,21 @@ PRICE_BOOK = {
         "haul_off_load":     {"cost": 185.0, "label": "Pickup/trailer haul-off, per load incl. tipping", "unit": "load"},
     },
     "lumber": {
-        "pt_2x4_lf":         {"cost": 0.85,  "label": "PT 2x4, per lf", "unit": "lf"},
-        "pt_2x6_lf":         {"cost": 1.25,  "label": "PT 2x6, per lf", "unit": "lf"},
-        "pt_2x8_lf":         {"cost": 1.75,  "label": "PT 2x8, per lf", "unit": "lf"},
-        "pt_2x10_lf":        {"cost": 2.45,  "label": "PT 2x10, per lf", "unit": "lf"},
-        "pt_2x12_lf":        {"cost": 3.30,  "label": "PT 2x12, per lf", "unit": "lf"},
-        "pt_4x4_lf":         {"cost": 1.95,  "label": "PT 4x4 post, per lf", "unit": "lf"},
-        "pt_6x6_lf":         {"cost": 4.20,  "label": "PT 6x6 post (ground contact), per lf", "unit": "lf"},
-        "pt_54x6_lf":        {"cost": 1.15,  "label": "PT 5/4x6 deck board, per lf", "unit": "lf"},
+        "pt_2x4_lf":         {"cost": 0.85,  "label": "PT 2x4", "unit": "lf", "lengths": {8: 6.80, 10: 8.60, 12: 10.20, 16: 13.90}},
+        "pt_2x6_lf":         {"cost": 1.25,  "label": "PT 2x6", "unit": "lf", "lengths": {8: 9.95, 10: 12.50, 12: 15.00, 16: 20.00}},
+        "pt_2x8_lf":         {"cost": 1.75,  "label": "PT 2x8", "unit": "lf", "lengths": {8: 14.00, 10: 17.50, 12: 21.00, 14: 24.50, 16: 28.00}},
+        "pt_2x10_lf":        {"cost": 2.45,  "label": "PT 2x10", "unit": "lf", "lengths": {8: 19.60, 10: 24.50, 12: 29.40, 14: 34.30, 16: 39.20}},
+        "pt_2x12_lf":        {"cost": 3.30,  "label": "PT 2x12", "unit": "lf", "lengths": {8: 26.40, 10: 33.00, 12: 39.60, 16: 52.80}},
+        "pt_4x4_lf":         {"cost": 1.95,  "label": "PT 4x4 post", "unit": "lf", "lengths": {8: 15.60, 10: 19.50, 12: 23.40}},
+        "pt_6x6_lf":         {"cost": 4.20,  "label": "PT 6x6 post (ground contact)", "unit": "lf", "lengths": {8: 33.60, 10: 42.00, 12: 50.40}},
+        "pt_54x6_lf":        {"cost": 1.15,  "label": "PT 5/4x6 deck board", "unit": "lf", "lengths": {8: 9.20, 12: 13.80, 16: 18.40}},
         "pt_2x2_baluster":   {"cost": 2.40,  "label": "PT 2x2 x 36 in baluster, each", "unit": "ea"},
-        "composite_deck_lf": {"cost": 3.85,  "label": "Composite 1x6 deck board (Trex Enhance class), per lf", "unit": "lf"},
+        "composite_deck_lf": {"cost": 3.85,  "label": "Composite 1x6 deck board (Trex Enhance class)", "unit": "lf", "lengths": {12: 46.20, 16: 61.60, 20: 77.00}},
         "composite_rail_section": {"cost": 245.0, "label": "Composite rail kit, 6 ft section w/ balusters", "unit": "ea"},
         "composite_post_sleeve": {"cost": 68.0, "label": "Composite post sleeve + cap + skirt", "unit": "ea"},
-        "spf_2x4_lf":        {"cost": 0.55,  "label": "SPF 2x4 stud/plate, per lf", "unit": "lf"},
-        "spf_2x6_lf":        {"cost": 0.86,  "label": "SPF 2x6 stud/plate, per lf", "unit": "lf"},
-        "header_2x10_lf":    {"cost": 2.10,  "label": "#2 2x10 header stock, per lf", "unit": "lf"},
+        "spf_2x4_lf":        {"cost": 0.55,  "label": "SPF 2x4 stud/plate", "unit": "lf", "lengths": {8: 4.35, 9: 4.95, 10: 5.60, 12: 6.75, 16: 9.20}},
+        "spf_2x6_lf":        {"cost": 0.86,  "label": "SPF 2x6 stud/plate", "unit": "lf", "lengths": {8: 6.90, 9: 7.80, 10: 8.60, 12: 10.30, 16: 13.80}},
+        "header_2x10_lf":    {"cost": 2.10,  "label": "#2 2x10 header stock", "unit": "lf", "lengths": {8: 16.80, 10: 21.00, 12: 25.20}},
         "osb_716_sheet":     {"cost": 34.0,  "label": "7/16 OSB sheathing, 4x8 sheet", "unit": "sheet"},
         "plywood_34_sheet":  {"cost": 62.0,  "label": "3/4 T&G plywood subfloor, 4x8 sheet", "unit": "sheet"},
     },
@@ -270,11 +293,11 @@ PRICE_BOOK = {
         "sundries_pct":      {"cost": 12.0,  "label": "Tape, plastic, rollers, caulk as % of paint cost"},
     },
     "trim": {
-        "base_mdf_lf":       {"cost": 1.85,  "label": "MDF baseboard 5-1/4 in primed, per lf", "unit": "lf"},
-        "base_pine_lf":      {"cost": 2.60,  "label": "Primed pine baseboard, per lf", "unit": "lf"},
-        "shoe_lf":           {"cost": 0.95,  "label": "Shoe molding, per lf", "unit": "lf"},
-        "casing_lf":         {"cost": 1.45,  "label": "Door/window casing, per lf", "unit": "lf"},
-        "crown_lf":          {"cost": 3.20,  "label": "Crown molding 4-5/8 in MDF, per lf", "unit": "lf"},
+        "base_mdf_lf":       {"cost": 1.85,  "label": "MDF baseboard 5-1/4 in primed", "unit": "lf", "lengths": {8: 14.80, 12: 22.20, 16: 29.60}},
+        "base_pine_lf":      {"cost": 2.60,  "label": "Primed pine baseboard", "unit": "lf", "lengths": {8: 20.80, 12: 31.20, 16: 41.60}},
+        "shoe_lf":           {"cost": 0.95,  "label": "Shoe molding", "unit": "lf", "lengths": {8: 7.60, 12: 11.40}},
+        "casing_lf":         {"cost": 1.45,  "label": "Door/window casing", "unit": "lf", "lengths": {7: 10.15, 10: 14.50}},
+        "crown_lf":          {"cost": 3.20,  "label": "Crown molding 4-5/8 in MDF", "unit": "lf", "lengths": {8: 25.60, 12: 38.40, 16: 51.20}},
         "door_hollow":       {"cost": 185.0, "label": "Prehung interior door, hollow core 6-panel", "unit": "ea"},
         "door_solid":        {"cost": 320.0, "label": "Prehung interior door, solid core", "unit": "ea"},
     },
@@ -314,6 +337,10 @@ def merged_prices(overrides=None):
                 for k, v in vals.items():
                     if v is None or v == "":
                         continue
+                    if k == "lengths":
+                        if isinstance(v, dict):
+                            book[section][key]["lengths"] = {float(L): float(c) for L, c in v.items() if c not in (None, "") and float(L) > 0}
+                        continue
                     if k == "hidden":
                         book[section][key]["hidden"] = bool(v)
                     elif k == "piece_ft":
@@ -330,7 +357,21 @@ def merged_prices(overrides=None):
         for key, v in book[section].items():
             if "unit" in PRICE_BOOK[section][key]:
                 v["base_unit"] = PRICE_BOOK[section][key]["unit"]
+            if "lengths" in v:
+                v["lengths"] = {float(L): float(c) for L, c in v["lengths"].items()}
     return book
+
+
+def _lengths(v):
+    """Available stock lengths for an item as sorted [(ft, price)], or [] if priced per foot only."""
+    L = v.get("lengths") or {}
+    if not L and v.get("base_unit") == "lf" and v.get("unit", "lf") != "lf":
+        L = {float(v.get("piece_ft") or 8.0): float(v["cost"])}   # single per-piece price
+    return sorted((float(a), float(b)) for a, b in L.items())
+
+
+def _ft(x):
+    return f"{x:g} ft"
 
 
 def material_catalog(book):
@@ -339,7 +380,10 @@ def material_catalog(book):
     for sec in MATERIAL_SECTIONS:
         for key, v in book[sec].items():
             if "unit" in v and not v.get("hidden"):
-                out.append({"id": f"{sec}.{key}", "section": SECTION_LABELS[sec], "section_key": sec, "label": v["label"],
+                for L, price in sorted((v.get("lengths") or {}).items()):
+                    out.append({"id": f"{sec}.{key}@{L:g}", "section": SECTION_LABELS[sec], "section_key": sec, "label": f"{v['label']}, {L:g} ft",
+                                "unit": "ea", "base_unit": "lf", "cost": price, "category": CATEGORY_FOR_SECTION.get(sec, "material"), "builtin": True, "length_of": f"{sec}.{key}"})
+                out.append({"id": f"{sec}.{key}", "section": SECTION_LABELS[sec], "section_key": sec, "label": v["label"] + (", per lf" if v.get("lengths") else ""),
                             "unit": v["unit"], "base_unit": v.get("base_unit"), "cost": v["cost"], "category": CATEGORY_FOR_SECTION.get(sec, "material"), "builtin": True})
     return out
 
@@ -366,13 +410,47 @@ def _f(d, k, default=0.0):
 def _mat(book, sec, key, qty, label=None):
     v = book[sec][key]
     unit = v.get("unit", "ea")
-    if v.get("base_unit") == "lf" and unit != "lf":
-        # priced per piece (e.g. $4.40 per 8 ft stud): convert the footage to pieces
-        piece = float(v.get("piece_ft") or 8.0)
-        qty = math.ceil(qty / piece)
+    if v.get("base_unit") == "lf" and (unit != "lf" or v.get("lengths")):
+        return _run(book, sec, key, qty, label or v["label"])
     it = _li(label or v["label"], CATEGORY_FOR_SECTION.get(sec, "material"), qty, unit, v["cost"])
     it["price_key"] = f"{sec}.{key}"
     it["book_cost"] = v["cost"]
+    return it
+
+
+def _pieces(book, sec, key, n, length_ft, label):
+    """n pieces that each need to be at least length_ft long (studs, joists, posts, deck boards)."""
+    v = book[sec][key]
+    opts = _lengths(v)
+    n = int(math.ceil(n))
+    if not opts:
+        it = _li(f"{label}, {n} @ {_ft(length_ft)}", CATEGORY_FOR_SECTION.get(sec, "material"), n * length_ft, "lf", v["cost"])
+        it["price_key"] = f"{sec}.{key}"; it["book_cost"] = v["cost"]
+        return it
+    fit = [o for o in opts if o[0] >= length_ft - 0.01]
+    if fit:
+        L, price = fit[0]
+        qty = n
+    else:                               # longer than anything stocked: splice the longest
+        L, price = opts[-1]
+        qty = n * math.ceil(length_ft / L)
+    it = _li(f"{label}, {n} @ {_ft(length_ft)} ({_ft(L)} stock)", CATEGORY_FOR_SECTION.get(sec, "material"), qty, "ea", price)
+    it["price_key"] = f"{sec}.{key}@{L:g}"; it["book_cost"] = price
+    return it
+
+
+def _run(book, sec, key, lf, label):
+    """A linear run (plates, rim, rails, trim) cut from the longest stock length."""
+    v = book[sec][key]
+    opts = _lengths(v)
+    if not opts:
+        it = _li(label, CATEGORY_FOR_SECTION.get(sec, "material"), lf, "lf", v["cost"])
+        it["price_key"] = f"{sec}.{key}"; it["book_cost"] = v["cost"]
+        return it
+    L, price = opts[-1]
+    qty = math.ceil(lf / L) if lf > 0 else 0
+    it = _li(f"{label} ({qty} x {_ft(L)})", CATEGORY_FOR_SECTION.get(sec, "material"), qty, "ea", price)
+    it["price_key"] = f"{sec}.{key}@{L:g}"; it["book_cost"] = price
     return it
 
 
@@ -403,20 +481,20 @@ def calc_deck(p, book):
     joist = "2x8" if W <= 12 else "2x10"
     jl = f"pt_{joist}_lf"
     joists = math.ceil(L * 12 / spacing) + 1
-    items.append(_mat(book, "lumber", jl, joists * W, f"PT {joist} joists, {joists} @ {W:g} ft"))
-    items.append(_mat(book, "lumber", jl, 2 * L + 2 * W, f"PT {joist} ledger + rim"))
+    items.append(_pieces(book, "lumber", jl, joists, W, f"PT {joist} joists"))
+    items.append(_run(book, "lumber", jl, 2 * L + 2 * W, f"PT {joist} ledger + rim"))
     n_beams = 1 if W <= 12 else 2
-    items.append(_mat(book, "lumber", "pt_2x10_lf", 2 * L * n_beams, f"PT 2x10 beam, 2-ply x {n_beams}"))
+    items.append(_run(book, "lumber", "pt_2x10_lf", 2 * L * n_beams, f"PT 2x10 beam, 2-ply x {n_beams}"))
     posts = (math.ceil(L / 8) + 1) * n_beams
     post_len = max(4, math.ceil(H + 1.5))
-    items.append(_mat(book, "lumber", "pt_6x6_lf", posts * post_len, f"PT 6x6 posts, {posts} @ {post_len} ft"))
+    items.append(_pieces(book, "lumber", "pt_6x6_lf", posts, post_len, "PT 6x6 posts"))
 
     rows = math.ceil(W * 12 / 5.625)
     if mat == "composite":
-        items.append(_mat(book, "lumber", "composite_deck_lf", rows * L * waste, f"Composite decking, {rows} rows"))
+        items.append(_pieces(book, "lumber", "composite_deck_lf", rows * waste, L, "Composite decking rows"))
         items.append(_mat(book, "hardware", "composite_fastener_box", math.ceil(area / 50)))
     else:
-        items.append(_mat(book, "lumber", "pt_54x6_lf", rows * L * waste, f"PT 5/4x6 decking, {rows} rows"))
+        items.append(_pieces(book, "lumber", "pt_54x6_lf", rows * waste, L, "PT 5/4x6 decking rows"))
         items.append(_mat(book, "hardware", "deck_screws_lb", math.ceil(area / 100 * 3.5)))
 
     hanger = "joist_hanger_2x8" if joist == "2x8" else "joist_hanger_2x10"
@@ -434,12 +512,12 @@ def calc_deck(p, book):
     if rail_lf > 0:
         if mat == "composite":
             items.append(_mat(book, "lumber", "composite_rail_section", math.ceil(rail_lf / 6)))
-            items.append(_mat(book, "lumber", "pt_4x4_lf", rail_posts * 4, f"PT 4x4 rail posts, {rail_posts}"))
+            items.append(_pieces(book, "lumber", "pt_4x4_lf", rail_posts / 2, 8, "PT 4x4 rail posts (2 per 8 ft)"))
             items.append(_mat(book, "lumber", "composite_post_sleeve", rail_posts))
         else:
-            items.append(_mat(book, "lumber", "pt_4x4_lf", rail_posts * 4, f"PT 4x4 rail posts, {rail_posts}"))
-            items.append(_mat(book, "lumber", "pt_2x4_lf", rail_lf * 2, "PT 2x4 top/bottom rails"))
-            items.append(_mat(book, "lumber", "pt_2x6_lf", rail_lf, "PT 2x6 cap rail"))
+            items.append(_pieces(book, "lumber", "pt_4x4_lf", rail_posts / 2, 8, "PT 4x4 rail posts (2 per 8 ft)"))
+            items.append(_run(book, "lumber", "pt_2x4_lf", rail_lf * 2, "PT 2x4 top/bottom rails"))
+            items.append(_run(book, "lumber", "pt_2x6_lf", rail_lf, "PT 2x6 cap rail"))
             items.append(_mat(book, "lumber", "pt_2x2_baluster", math.ceil(rail_lf * 3)))
             items.append(_mat(book, "hardware", "rail_bracket_set", math.ceil(rail_lf / 6)))
         items.append(_mat(book, "hardware", "carriage_bolt", rail_posts * 2, "Carriage bolts, rail posts"))
@@ -447,12 +525,12 @@ def calc_deck(p, book):
     steps = math.ceil(H * 12 / 7.5) if stair_w else 0
     if steps:
         run_ft = steps * 1.2
-        items.append(_mat(book, "lumber", "pt_2x12_lf", 3 * math.ceil(run_ft), f"PT 2x12 stringers, 3 @ {math.ceil(run_ft)} ft"))
+        items.append(_pieces(book, "lumber", "pt_2x12_lf", 3, math.ceil(run_ft), "PT 2x12 stringers"))
         tread = "composite_deck_lf" if mat == "composite" else "pt_54x6_lf"
-        items.append(_mat(book, "lumber", tread, steps * 8, f"Stair treads, {steps} steps"))
-        items.append(_mat(book, "lumber", "pt_2x8_lf", steps * 4, "PT 2x8 risers"))
+        items.append(_run(book, "lumber", tread, steps * 8, f"Stair treads, {steps} steps"))
+        items.append(_run(book, "lumber", "pt_2x8_lf", steps * 4, "PT 2x8 risers"))
         items.append(_mat(book, "hardware", "stringer_hanger", 3))
-        items.append(_mat(book, "lumber", "pt_2x4_lf", run_ft * 2 + 8, "PT 2x4 stair handrail + posts"))
+        items.append(_run(book, "lumber", "pt_2x4_lf", run_ft * 2 + 8, "PT 2x4 stair handrail + posts"))
 
     # labor in hours
     hrs = _p(book, "deck_setup_hr")
@@ -485,20 +563,20 @@ def calc_framing(p, book):
     studs = 0
     if lf:
         studs = math.ceil(lf * 12 / spacing) + 1 + corners * 2 + openings * 4
-        items.append(_mat(book, "lumber", key, studs * height, f"SPF {size} studs, {studs} @ {height:g} ft"))
-        items.append(_mat(book, "lumber", key, lf * 2, f"SPF {size} double top plate"))
+        items.append(_pieces(book, "lumber", key, studs, height, f"SPF {size} studs"))
+        items.append(_run(book, "lumber", key, lf * 2, f"SPF {size} double top plate"))
         if p.get("pt_bottom_plate"):
-            items.append(_mat(book, "lumber", "pt_2x6_lf" if size == "2x6" else "pt_2x4_lf", lf, "PT bottom plate (on concrete)"))
+            items.append(_run(book, "lumber", "pt_2x6_lf" if size == "2x6" else "pt_2x4_lf", lf, "PT bottom plate (on concrete)"))
             items.append(_mat(book, "hardware", "tapcon_box", max(1, math.ceil(lf / 25))))
             items.append(_mat(book, "hardware", "construction_adhesive", max(1, math.ceil(lf / 30))))
         else:
-            items.append(_mat(book, "lumber", key, lf, f"SPF {size} bottom plate"))
+            items.append(_run(book, "lumber", key, lf, f"SPF {size} bottom plate"))
         if p.get("blocking", True):
-            items.append(_mat(book, "lumber", key, lf, "Fire blocking / mid-wall blocking"))
+            items.append(_run(book, "lumber", key, lf, "Fire blocking / mid-wall blocking"))
     if openings:
-        items.append(_mat(book, "lumber", "header_2x10_lf", openings * 8, f"2x10 headers, 2-ply, {openings} openings"))
+        items.append(_pieces(book, "lumber", "header_2x10_lf", openings * 2, 4, f"2x10 headers, 2-ply, {openings} openings"))
     if furring:
-        items.append(_mat(book, "lumber", "spf_2x4_lf", furring * height / 8 * 6, f"SPF 2x4 furring / build-out, {furring:g} lf"))
+        items.append(_pieces(book, "lumber", "spf_2x4_lf", furring * 12 / 16 + 1, height, f"SPF 2x4 furring / build-out, {furring:g} lf"))
     sheets = 0
     if p.get("sheathing") and lf:
         sheets = math.ceil(lf * height / 32 * 1.1)
@@ -593,16 +671,17 @@ def calc_trim(p, book):
     crown_lf = _f(p, "crown_lf", 0)
     items = []
     if base_lf:
-        items.append(_mat(book, "trim", "base_pine_lf" if base_type == "pine" else "base_mdf_lf", base_lf * waste))
+        bk = "base_pine_lf" if base_type == "pine" else "base_mdf_lf"
+        items.append(_run(book, "trim", bk, base_lf * waste, book["trim"][bk]["label"]))
         if p.get("shoe"):
-            items.append(_mat(book, "trim", "shoe_lf", base_lf * waste))
+            items.append(_run(book, "trim", "shoe_lf", base_lf * waste, "Shoe molding"))
     if cased:
-        items.append(_mat(book, "trim", "casing_lf", cased * 17 * waste, f"Casing, {cased} openings (17 lf each, both sides)"))
+        items.append(_pieces(book, "trim", "casing_lf", cased * 6, 7, f"Casing, {cased} openings (6 legs/heads each)"))
     if doors:
         items.append(_mat(book, "trim", "door_solid" if door_type == "solid" else "door_hollow", doors))
         items.append(_mat(book, "hardware", "door_lever_set", doors))
     if crown_lf:
-        items.append(_mat(book, "trim", "crown_lf", crown_lf * waste))
+        items.append(_run(book, "trim", "crown_lf", crown_lf * waste, "Crown molding"))
     items.append(_mat(book, "hardware", "finish_nails_box", 1))
     items.append(_li("Caulk, wood filler, glue", "material", 1, "ea", 35.0))
 

@@ -104,6 +104,7 @@
     gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
     plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>',
     trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
+    ruler: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="8" width="20" height="8" rx="1.5"/><path d="M6 8v3M10 8v4M14 8v3M18 8v4"/></svg>',
     move: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h16M14 6l6 6-6 6"/></svg>',
     refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>',
     lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
@@ -730,8 +731,11 @@
           <td class="right"><input class="price-input" type="number" step="any" data-mid="${x.db_id}" data-f="cost" value="${x.cost}"> <span class="dim editable" style="font-size:11px" data-cunit="${x.db_id}" title="Double-click to change the unit">/ ${esc(x.unit)}</span>
             <button class="btn ghost xs danger hidden" data-delmat="${x.db_id}" title="Delete">${ICON.trash}</button></td></tr>`;
     const builtinRow = (x) => { const [sec, key] = x.id.split("."); const o = overrides[x.id]?.cost;
-      return `<tr><td class="star-cell">${starHtml(x.id)}</td><td class="editable" data-label="${x.id}" title="Double-click to rename">${esc(x.label)}</td><td class="right"><input class="price-input ${o !== undefined ? "changed" : ""}" type="number" step="any" data-path="${x.id}" data-f="cost" value="${x.cost}"> <span class="dim editable" style="font-size:11px" data-unit="${x.id}" title="Double-click to change the unit">/ ${esc(x.unit)}${x.base_unit === "lf" && x.unit !== "lf" ? ` (${S.pricing.book[x.id.split(".")[0]][x.id.split(".")[1]].piece_ft || 8} ft)` : ""}</span> <button class="btn ghost xs danger hidden" data-hide="${x.id}" title="Remove from price book">${ICON.trash}</button></td></tr>`; };
+      return `<tr><td class="star-cell">${starHtml(x.id)}</td><td><span class="editable" data-label="${x.id}" title="Double-click to rename">${esc(x.label)}</span>${lengthsLine(x.id)}</td><td class="right">${lengthsBtn(x.id)}<input class="price-input ${o !== undefined ? "changed" : ""}" type="number" step="any" data-path="${x.id}" data-f="cost" value="${x.cost}"> <span class="dim editable" style="font-size:11px" data-unit="${x.id}" title="Double-click to change the unit">/ ${esc(x.unit)}${x.base_unit === "lf" && x.unit !== "lf" ? ` (${S.pricing.book[x.id.split(".")[0]][x.id.split(".")[1]].piece_ft || 8} ft)` : ""}</span> <button class="btn ghost xs danger hidden" data-hide="${x.id}" title="Remove from price book">${ICON.trash}</button></td></tr>`; };
     const hiddenIds = Object.entries(overrides).filter(([, v]) => v && v.hidden).map(([k]) => k);
+    const entryOf = (id) => { const [sec, key] = id.split("."); return book[sec]?.[key]; };
+    const lengthsLine = (id) => { const v = entryOf(id); const L = v?.lengths ? Object.entries(v.lengths).sort((a, b) => a[0] - b[0]) : []; return L.length ? `<div class="dim" style="font-size:11px">${L.map(([ft, c]) => `${(+ft).toString()}' ${money2(c)}`).join(" · ")}</div>` : ""; };
+    const lengthsBtn = (id) => { const v = entryOf(id); return v?.base_unit === "lf" ? `<button class="btn ghost xs" data-lengths="${id}" title="Stock lengths and per-piece prices">${ICON.ruler}</button> ` : ""; };
     main().innerHTML = head("Price book", marketMetaLine(),
       `${hiddenIds.length ? `<button class="btn ghost" id="showhidden">Hidden (${hiddenIds.length})</button>` : ""}<button class="btn" id="market">${ICON.refresh} Update market prices</button><button class="btn" id="addmat">${ICON.plus} Add material</button><button class="btn" id="reset">Reset built-ins</button><button class="btn primary" id="save">Save changes</button>`) + `
       <div class="card pad-0 mb"><div class="card-head" style="padding:14px 18px 0"><h3>★ Favorites</h3></div>
@@ -744,8 +748,8 @@
             const fields = Object.keys(v).filter((k) => ["cost", "rate", "hours", "pct"].includes(k));
             const id = `${sec}.${key}`;
             const starCell = Object.values(book[sec]).some((b) => "unit" in b) ? `<td class="star-cell">${"unit" in v ? starHtml(id) : ""}</td>` : "";
-            return `<tr>${starCell}<td class="editable" data-label="${id}" title="Double-click to rename">${esc(v.label)}</td>
-              <td class="right">${fields.map((f) => `<span class="dim" style="font-size:11px;margin-left:8px">${fields.length > 1 ? f : ""}</span> <input class="price-input ${overrides[id]?.[f] !== undefined ? "changed" : ""}" type="number" step="any" data-path="${id}" data-f="${f}" value="${v[f]}">`).join("")}${"unit" in v ? ` <span class="dim editable" style="font-size:11px" data-unit="${id}" title="Double-click to change the unit">/ ${esc(v.unit)}${v.base_unit === "lf" && v.unit !== "lf" ? ` (${v.piece_ft || 8} ft)` : ""}</span>` : ""} <button class="btn ghost xs danger hidden" data-hide="${id}" title="Remove from price book">${ICON.trash}</button></td></tr>`; }).join("")}
+            return `<tr>${starCell}<td><span class="editable" data-label="${id}" title="Double-click to rename">${esc(v.label)}</span>${lengthsLine(id)}</td>
+              <td class="right">${lengthsBtn(id)}${fields.map((f) => `<span class="dim" style="font-size:11px;margin-left:8px">${fields.length > 1 ? f : ""}</span> <input class="price-input ${overrides[id]?.[f] !== undefined ? "changed" : ""}" type="number" step="any" data-path="${id}" data-f="${f}" value="${v[f]}">`).join("")}${"unit" in v ? ` <span class="dim editable" style="font-size:11px" data-unit="${id}" title="Double-click to change the unit">/ ${esc(v.unit)}${v.base_unit === "lf" && v.unit !== "lf" ? ` (${v.piece_ft || 8} ft)` : ""}</span>` : ""} <button class="btn ghost xs danger hidden" data-hide="${id}" title="Remove from price book">${ICON.trash}</button></td></tr>`; }).join("")}
           ${mine.filter((x) => x.section_key === sec).map(customRow).join("")}
           </tbody></table></div>`).join("")}</div>`;
     wireStars(document, () => render());
@@ -796,6 +800,7 @@
       S.user = user; await loadPricing(); render();
     };
     $$("[data-hide]").forEach((b) => (b.onmousedown = (e) => e.preventDefault(), b.onclick = async () => { if (await confirmDlg("Remove this entry from your price book? You can bring it back from the Hidden button.")) setHidden(b.dataset.hide, true); }));
+    $$("[data-lengths]").forEach((b) => (b.onclick = () => lengthsModal(b.dataset.lengths)));
     const sh = $("#showhidden");
     if (sh) sh.onclick = () => {
       const m = modal(`<h2>Hidden entries</h2><table><tbody>${hiddenIds.map((id) => { const [sec, key] = id.split("."); const v = book[sec]?.[key]; return v ? `<tr><td>${esc(v.label)}<div class="dim" style="font-size:11px">${esc(sections[sec] || sec)}</div></td><td class="right"><button class="btn sm" data-restore="${id}">Restore</button></td></tr>` : ""; }).join("")}</tbody></table>
@@ -835,6 +840,32 @@
       const { user } = await api("/api/settings", { method: "PUT", body: { price_overrides: {} } });
       S.user = user; await loadPricing(); toast("Defaults restored"); render();
     };
+  }
+
+  function lengthsModal(id) {
+    const [sec, key] = id.split(".");
+    const v = S.pricing.book[sec][key];
+    let rows = Object.entries(v.lengths || {}).map(([ft, c]) => ({ ft: +ft, cost: c })).sort((a, b) => a.ft - b.ft);
+    const m = modal(`<h2>${esc(v.label)}: stock lengths</h2>
+      <p class="muted">Price per piece for each length you buy. The calculators pick the length that fits the job (9 ft studs for a 9 ft wall, plates out of 16 footers). Leave it empty to price by the foot only.</p>
+      <table><thead><tr><th>Length (ft)</th><th class="num">Price per piece</th><th></th></tr></thead><tbody id="lrows"></tbody></table>
+      <div class="row mt"><button class="btn sm" id="addlen">${ICON.plus} Add length</button><span class="grow"></span><span class="dim" style="font-size:12px">Per-foot fallback: ${money2(v.cost)} / lf</span></div>
+      <div class="actions"><button class="btn" data-close>Cancel</button><button class="btn primary" id="save">Save</button></div>`);
+    const draw = () => {
+      $("#lrows", m.el).innerHTML = rows.map((r, i) => `<tr><td><input type="number" step="any" min="0" data-lft="${i}" value="${r.ft}" style="width:90px"></td><td class="num"><input class="price-input" type="number" step="any" min="0" data-lcost="${i}" value="${r.cost}"></td><td class="right"><button class="btn ghost xs danger" data-ldel="${i}">✕</button></td></tr>`).join("") || `<tr><td colspan="3" class="empty">No stock lengths. Priced per foot.</td></tr>`;
+      $$("[data-lft]", m.el).forEach((i) => (i.oninput = () => (rows[+i.dataset.lft].ft = parseFloat(i.value))));
+      $$("[data-lcost]", m.el).forEach((i) => (i.oninput = () => (rows[+i.dataset.lcost].cost = parseFloat(i.value))));
+      $$("[data-ldel]", m.el).forEach((b) => (b.onclick = () => { rows.splice(+b.dataset.ldel, 1); draw(); }));
+    };
+    $("#addlen", m.el).onclick = () => { const last = rows[rows.length - 1]; rows.push({ ft: last ? last.ft + 2 : 8, cost: last ? Math.round((last.cost / last.ft) * (last.ft + 2) * 100) / 100 : Math.round(v.cost * 8 * 100) / 100 }); draw(); };
+    $("#save", m.el).onclick = async () => {
+      const lengths = {};
+      rows.filter((r) => r.ft > 0 && r.cost >= 0).forEach((r) => (lengths[r.ft] = r.cost));
+      const merged = { ...(S.user.price_overrides || {}), [id]: { ...((S.user.price_overrides || {})[id] || {}), lengths } };
+      const { user } = await api("/api/settings", { method: "PUT", body: { price_overrides: merged } });
+      S.user = user; await loadPricing(); m.close(); toast("Lengths saved", "ok"); render();
+    };
+    draw();
   }
 
   function materialModal() {
