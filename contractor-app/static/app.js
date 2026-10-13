@@ -90,6 +90,7 @@
     gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
     plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>',
     trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
+    move: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12h16M14 6l6 6-6 6"/></svg>',
     refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>',
     lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
     ext: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4h6v6M20 4l-9 9M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>',
@@ -707,9 +708,9 @@
     const favs = S.pricing.materials.filter((x) => isFav(x.id));
     const customRow = (x) => `<tr>
           <td class="star-cell">${starHtml(x.id)}</td>
-          <td><input type="text" data-mid="${x.db_id}" data-f="label" value="${esc(x.label)}"></td>
-          <td class="right"><select data-mid="${x.db_id}" data-f="section" style="width:auto;padding:4px 26px 4px 8px;font-size:12px">${sectionOptions(x.section_key || x.section)}</select>
-            <input class="price-input" type="number" step="any" data-mid="${x.db_id}" data-f="cost" value="${x.cost}"> <span class="dim" style="font-size:11px">/ ${esc(x.unit)}</span>
+          <td class="editable" data-clabel="${x.db_id}" title="Double-click to rename">${esc(x.label)}</td>
+          <td class="right"><input class="price-input" type="number" step="any" data-mid="${x.db_id}" data-f="cost" value="${x.cost}"> <span class="dim editable" style="font-size:11px" data-cunit="${x.db_id}" title="Double-click to change the unit">/ ${esc(x.unit)}</span>
+            <span class="mover" data-move="${x.db_id}"><button class="btn ghost xs" title="Move to another section">${ICON.move}</button></span>
             <button class="btn ghost xs danger" data-delmat="${x.db_id}" title="Delete">${ICON.trash}</button></td></tr>`;
     const builtinRow = (x) => { const [sec, key] = x.id.split("."); const o = overrides[x.id]?.cost;
       return `<tr><td class="star-cell">${starHtml(x.id)}</td><td class="editable" data-label="${x.id}" title="Double-click to rename">${esc(x.label)}</td><td class="right"><input class="price-input ${o !== undefined ? "changed" : ""}" type="number" step="any" data-path="${x.id}" data-f="cost" value="${x.cost}"> <span class="dim editable" style="font-size:11px" data-unit="${x.id}" title="Double-click to change the unit">/ ${esc(x.unit)}</span></td></tr>`; };
@@ -730,7 +731,7 @@
           ${mine.filter((x) => x.section_key === sec).map(customRow).join("")}
           </tbody></table></div>`).join("")}</div>`;
     wireStars(document, () => render());
-    const inlineEdit = (el, id, field, orig, display) => {
+    const inlineEdit = (el, id, field, orig, display, saver) => {
       if (el.querySelector("input")) return;
       el.innerHTML = `<input type="text" value="${esc(orig)}" style="padding:4px 8px;${field === "unit" ? "width:70px" : ""}">`;
       const inp = el.querySelector("input");
@@ -740,10 +741,14 @@
         if (done) return; done = true;
         const val = inp.value.trim();
         if (!save || !val || val === orig) { el.textContent = display(orig); return; }
-        const merged = { ...(S.user.price_overrides || {}), [id]: { ...((S.user.price_overrides || {})[id] || {}), [field]: val } };
-        const { user } = await api("/api/settings", { method: "PUT", body: { price_overrides: merged } });
-        S.user = user; await loadPricing();
-        $$(`[data-${field}="${id}"]`).forEach((t) => (t.textContent = display(val)));
+        if (saver) await saver(val);
+        else {
+          const merged = { ...(S.user.price_overrides || {}), [id]: { ...((S.user.price_overrides || {})[id] || {}), [field]: val } };
+          const { user } = await api("/api/settings", { method: "PUT", body: { price_overrides: merged } });
+          S.user = user;
+        }
+        await loadPricing();
+        el.textContent = display(val);
         toast(field === "unit" ? "Unit changed" : "Renamed", "ok");
       };
       inp.onkeydown = (e) => { if (e.key === "Enter") finish(true); if (e.key === "Escape") finish(false); };
@@ -751,6 +756,20 @@
     };
     $$("td[data-label]").forEach((td) => (td.ondblclick = () => inlineEdit(td, td.dataset.label, "label", td.textContent, (v) => v)));
     $$("[data-unit]").forEach((sp) => (sp.ondblclick = () => inlineEdit(sp, sp.dataset.unit, "unit", sp.textContent.replace(/^\/\s*/, ""), (v) => `/ ${v}`)));
+    const customSave = (id, field) => async (val) => { const row = mine.find((x) => x.db_id === +id); await api(`/api/materials/${id}`, { method: "PUT", body: { ...row, section: row.section_key || row.section, [field]: val } }); };
+    $$("td[data-clabel]").forEach((td) => (td.ondblclick = () => inlineEdit(td, td.dataset.clabel, "label", td.textContent, (v) => v, customSave(td.dataset.clabel, "label"))));
+    $$("[data-cunit]").forEach((sp) => (sp.ondblclick = () => inlineEdit(sp, sp.dataset.cunit, "unit", sp.textContent.replace(/^\/\s*/, ""), (v) => `/ ${v}`, customSave(sp.dataset.cunit, "unit"))));
+    const armMover = (wrap) => {
+      wrap.querySelector("button").onclick = () => {
+        const row = mine.find((x) => x.db_id === +wrap.dataset.move);
+        wrap.innerHTML = `<select style="width:auto;padding:4px 26px 4px 8px;font-size:12px">${sectionOptions(row.section_key || row.section)}</select>`;
+        const sel = wrap.querySelector("select");
+        sel.focus();
+        sel.onchange = () => saveMat(wrap.dataset.move, { section: sel.value });
+        sel.onblur = () => { wrap.innerHTML = `<button class="btn ghost xs" title="Move to another section">${ICON.move}</button>`; armMover(wrap); };
+      };
+    };
+    $$("[data-move]").forEach(armMover);
     const dirty = {};
     $$(".price-input[data-path]").forEach((i) => (i.oninput = () => { (dirty[i.dataset.path] ||= {})[i.dataset.f] = i.value; $$(`.price-input[data-path="${i.dataset.path}"]`).forEach((o) => { o.value = i.value; o.classList.add("changed"); }); }));
     $("#save").onclick = async () => {
