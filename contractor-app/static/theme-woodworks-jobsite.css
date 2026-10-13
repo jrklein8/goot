@@ -1,0 +1,141 @@
+/* =====================================================================
+   WOODWORKS × JOBSITE
+   Jobsite's bones (blueprint grid, squared plates, hard shadows, hazard
+   stripe, pressable buttons) in Woodworks' skin (espresso, sand, rust,
+   heavy rounded caps, bolts, the logo).
+   ===================================================================== */
+html[data-theme="woodworks-jobsite"] {
+  --radius: 0; --radius-sm: 0;
+  --font: "Rubik", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  --head: "Rubik", system-ui, sans-serif;
+  --stencil: "Rubik", system-ui, sans-serif;
+  --border-2: #5a4632;
+}
+/* =====================================================================
+   THEME: JOBSITE
+   Blueprint grid, safety orange, stencil labels, squared tactile buttons.
+   Feels like a clipboard in a truck, not a SaaS dashboard.
+   ===================================================================== */
+
+html[data-theme="woodworks-jobsite"] body {
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(rgba(233, 201, 160, 0.055) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(233, 201, 160, 0.055) 1px, transparent 1px);
+  background-size: 26px 26px;
+  font-size: 14.5px;
+}
+html[data-theme="woodworks-jobsite"] h1 { font-family: var(--head); font-weight: 700; font-size: 36px; text-transform: uppercase; letter-spacing: 0.01em; line-height: 1; }
+html[data-theme="woodworks-jobsite"] h1 .dim { font-family: var(--mono); font-size: 13px; letter-spacing: 0.06em; }
+html[data-theme="woodworks-jobsite"] h2 { font-family: var(--head); font-weight: 600; font-size: 22px; text-transform: uppercase; letter-spacing: 0.02em; }
+html[data-theme="woodworks-jobsite"] h3 { font-family: var(--stencil); font-weight: 700; font-size: 14px; letter-spacing: 0.14em; color: var(--accent); }
+html[data-theme="woodworks-jobsite"] .page-head { border-bottom: 2px solid var(--border-2); padding-bottom: 14px; position: relative; }
+html[data-theme="woodworks-jobsite"] .page-head::after {
+  content: ""; position: absolute; left: 0; bottom: -2px; width: 140px; height: 6px;
+  background: repeating-linear-gradient(135deg, var(--accent) 0 10px, #1a110a 10px 20px);
+}
+html[data-theme="woodworks-jobsite"] .page-head .sub { font-family: var(--mono); font-size: 12px; letter-spacing: 0.04em; text-transform: uppercase; }
+
+/* layout */
+html[data-theme="woodworks-jobsite"] .sidebar { background: var(--bg-2); border-right: 2px solid var(--border-2); border-left: 8px solid var(--accent); }
+html[data-theme="woodworks-jobsite"] .brand .logo { border-radius: 0; background: var(--accent); color: #000; font-family: var(--stencil); font-size: 20px; transform: rotate(-4deg); box-shadow: 3px 3px 0 #000; }
+html[data-theme="woodworks-jobsite"] .brand .name { font-family: var(--head); font-size: 19px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.02em; }
+html[data-theme="woodworks-jobsite"] .nav a { border-radius: 0; font-family: var(--head); font-size: 16px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; border-left: 4px solid transparent; padding-left: 12px; }
+html[data-theme="woodworks-jobsite"] .nav a:hover { background: var(--surface); }
+html[data-theme="woodworks-jobsite"] .nav a.active { background: transparent; border-left-color: var(--accent); color: var(--text); }
+html[data-theme="woodworks-jobsite"] .userbox { border-top: 2px dashed var(--border-2); font-family: var(--mono); font-size: 11.5px; }
+
+/* cards: squared, thick border, hard shadow */
+html[data-theme="woodworks-jobsite"] .card { border: 2px solid var(--border-2); border-radius: 0; box-shadow: 5px 5px 0 #0d0905; }
+html[data-theme="woodworks-jobsite"] .stat .label { font-family: var(--stencil); color: var(--accent); letter-spacing: 0.14em; font-size: 12px; }
+html[data-theme="woodworks-jobsite"] .stat .value { font-family: var(--head); font-size: 44px; font-weight: 700; letter-spacing: 0; line-height: 1; margin-top: 8px; }
+html[data-theme="woodworks-jobsite"] .stat .foot { font-family: var(--mono); font-size: 11px; }
+
+/* buttons: flat, squared, pressable */
+html[data-theme="woodworks-jobsite"] .btn {
+  border-radius: 0; border: 2px solid var(--border-2); background: var(--surface-2); box-shadow: 3px 3px 0 #0d0905;
+  font-family: var(--head); font-weight: 600; font-size: 14.5px; text-transform: uppercase; letter-spacing: 0.05em;
+}
+html[data-theme="woodworks-jobsite"] .btn:hover { background: var(--surface-3); border-color: var(--text-2); }
+html[data-theme="woodworks-jobsite"] .btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 #0d0905; }
+html[data-theme="woodworks-jobsite"] .btn.primary { background: var(--accent); border-color: var(--accent); color: #000; }
+html[data-theme="woodworks-jobsite"] .btn.primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+html[data-theme="woodworks-jobsite"] .btn.ghost { box-shadow: none; border-color: transparent; background: transparent; }
+html[data-theme="woodworks-jobsite"] .btn.ghost:hover { border-color: var(--border-2); }
+html[data-theme="woodworks-jobsite"] .btn.sm, html[data-theme="woodworks-jobsite"] .btn.xs { box-shadow: 2px 2px 0 #0d0905; }
+html[data-theme="woodworks-jobsite"] .btn.xs { font-size: 12px; }
+
+/* forms */
+html[data-theme="woodworks-jobsite"] input[type=text], html[data-theme="woodworks-jobsite"] input[type=email], html[data-theme="woodworks-jobsite"] input[type=password],
+html[data-theme="woodworks-jobsite"] input[type=number], html[data-theme="woodworks-jobsite"] input[type=date], html[data-theme="woodworks-jobsite"] input[type=datetime-local],
+html[data-theme="woodworks-jobsite"] select, html[data-theme="woodworks-jobsite"] textarea { border-radius: 0; border: 2px solid var(--border-2); background: #100c08; }
+html[data-theme="woodworks-jobsite"] input:focus, html[data-theme="woodworks-jobsite"] select:focus, html[data-theme="woodworks-jobsite"] textarea:focus { box-shadow: 3px 3px 0 var(--accent); border-color: var(--accent); }
+html[data-theme="woodworks-jobsite"] label.field > span { font-family: var(--stencil); letter-spacing: 0.1em; font-size: 11.5px; color: var(--text-2); }
+html[data-theme="woodworks-jobsite"] input.inline-num, html[data-theme="woodworks-jobsite"] input.price-input, html[data-theme="woodworks-jobsite"] input.inline-text { border-width: 1px; }
+
+/* tags */
+html[data-theme="woodworks-jobsite"] .badge { border-radius: 0; background: transparent; border: 1.5px solid currentColor; font-family: var(--head); font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.08em; padding: 2px 8px; }
+html[data-theme="woodworks-jobsite"] .badge::before { display: none; }
+html[data-theme="woodworks-jobsite"] select.status-select { border-radius: 0; border: 1.5px solid currentColor; background-color: transparent; font-family: var(--head); text-transform: uppercase; letter-spacing: 0.08em; }
+html[data-theme="woodworks-jobsite"] .cat { border-radius: 0; font-family: var(--head); letter-spacing: 0.08em; }
+html[data-theme="woodworks-jobsite"] .chip { border-radius: 0; font-family: var(--head); text-transform: uppercase; letter-spacing: 0.05em; font-size: 13px; border-width: 2px; }
+html[data-theme="woodworks-jobsite"] .meta-chip { border-radius: 0; font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; }
+html[data-theme="woodworks-jobsite"] .star.on { color: var(--accent); }
+
+/* tables */
+html[data-theme="woodworks-jobsite"] th { font-family: var(--stencil); letter-spacing: 0.12em; font-size: 11.5px; color: var(--muted); border-bottom: 2px solid var(--border-2); }
+html[data-theme="woodworks-jobsite"] td { border-bottom: 1px solid var(--border); }
+html[data-theme="woodworks-jobsite"] tr.group-head td { background: #1a120c; font-family: var(--head); font-size: 16px; text-transform: uppercase; letter-spacing: 0.03em; border-top: 2px solid var(--border-2); }
+html[data-theme="woodworks-jobsite"] td.num, html[data-theme="woodworks-jobsite"] th.num { font-family: var(--mono); }
+
+/* totals: like a tally sheet */
+html[data-theme="woodworks-jobsite"] .totals .line b { font-family: var(--mono); }
+html[data-theme="woodworks-jobsite"] .totals .line.grand { border-top: 2px solid var(--accent); }
+html[data-theme="woodworks-jobsite"] .totals .line.grand b { font-family: var(--head); font-size: 34px; font-weight: 700; color: var(--accent); }
+html[data-theme="woodworks-jobsite"] .totals .line.grand span { font-family: var(--stencil); letter-spacing: 0.12em; align-self: center; }
+
+/* pipeline / calendar / misc */
+html[data-theme="woodworks-jobsite"] .pipe { border-radius: 0; height: 12px; border: 1px solid var(--border-2); }
+html[data-theme="woodworks-jobsite"] .pipe span { border-radius: 0; }
+html[data-theme="woodworks-jobsite"] .cal { border-radius: 0; border: 2px solid var(--border-2); }
+html[data-theme="woodworks-jobsite"] .cal .dow { font-family: var(--stencil); letter-spacing: 0.12em; }
+html[data-theme="woodworks-jobsite"] .cal .day.today .n { border-radius: 0; background: var(--accent); color: #000; }
+html[data-theme="woodworks-jobsite"] .ev { border-radius: 0; font-family: var(--mono); font-size: 11px; }
+html[data-theme="woodworks-jobsite"] .agenda .when .d { font-family: var(--head); font-size: 24px; }
+html[data-theme="woodworks-jobsite"] .agenda .when .m { font-family: var(--stencil); }
+html[data-theme="woodworks-jobsite"] .cmp .track { border-radius: 0; border: 1px solid var(--border-2); }
+html[data-theme="woodworks-jobsite"] .cmp .track span { border-radius: 0; }
+html[data-theme="woodworks-jobsite"] .code { border-radius: 0; border: 2px dashed var(--border-2); }
+html[data-theme="woodworks-jobsite"] .modal { border-radius: 0; border: 2px solid var(--border-2); box-shadow: 10px 10px 0 #0d0905; }
+html[data-theme="woodworks-jobsite"] .toast { border-radius: 0; border: 2px solid var(--border-2); border-left: 6px solid var(--accent); box-shadow: 4px 4px 0 #0d0905; }
+html[data-theme="woodworks-jobsite"] .auth .card { border: 2px solid var(--border-2); box-shadow: 8px 8px 0 #0d0905; }
+html[data-theme="woodworks-jobsite"] .auth .tabs { border-radius: 0; }
+html[data-theme="woodworks-jobsite"] .auth .tabs button { border-radius: 0; font-family: var(--head); text-transform: uppercase; letter-spacing: 0.05em; font-size: 15px; }
+html[data-theme="woodworks-jobsite"] .auth-wrap { background: var(--bg); background-image: linear-gradient(rgba(233, 201, 160, 0.055) 1px, transparent 1px), linear-gradient(90deg, rgba(233, 201, 160, 0.055) 1px, transparent 1px); background-size: 26px 26px; }
+html[data-theme="woodworks-jobsite"] .proposal { border-radius: 0; }
+html[data-theme="woodworks-jobsite"] .greeting { font-family: var(--head); font-weight: 600; text-transform: uppercase; letter-spacing: 0.03em; }
+
+/* woodworks lettering on jobsite structure */
+html[data-theme="woodworks-jobsite"] h1 { font-weight: 900; letter-spacing: 0.05em; font-size: 32px; color: var(--sand); }
+html[data-theme="woodworks-jobsite"] h2 { font-weight: 800; letter-spacing: 0.04em; }
+html[data-theme="woodworks-jobsite"] h3 { font-weight: 800; letter-spacing: 0.2em; font-size: 12px; color: var(--sand); display: flex; align-items: center; gap: 6px; }
+html[data-theme="woodworks-jobsite"] h3::before { content: ""; width: 12px; height: 12px; background: var(--bolt) center / contain no-repeat; }
+html[data-theme="woodworks-jobsite"] .stat .label { font-weight: 800; letter-spacing: 0.18em; font-size: 10.5px; color: var(--accent-2); }
+html[data-theme="woodworks-jobsite"] .stat .value { font-weight: 900; font-size: 40px; color: var(--sand); }
+html[data-theme="woodworks-jobsite"] .nav a { font-weight: 800; font-size: 12.5px; letter-spacing: 0.14em; }
+html[data-theme="woodworks-jobsite"] .btn { font-weight: 800; font-size: 12px; letter-spacing: 0.12em; }
+html[data-theme="woodworks-jobsite"] .btn.primary { background: var(--rust); border-color: var(--rust); color: var(--sand); }
+html[data-theme="woodworks-jobsite"] .btn.primary:hover { background: var(--accent); border-color: var(--accent); color: #1a110a; }
+html[data-theme="woodworks-jobsite"] .badge { font-weight: 800; font-size: 10.5px; letter-spacing: 0.16em; }
+html[data-theme="woodworks-jobsite"] th { font-weight: 800; letter-spacing: 0.16em; }
+html[data-theme="woodworks-jobsite"] tr.group-head td { font-weight: 800; font-size: 12.5px; letter-spacing: 0.06em; color: var(--sand); }
+html[data-theme="woodworks-jobsite"] .totals .line.grand span { font-weight: 800; letter-spacing: 0.16em; font-size: 11.5px; }
+html[data-theme="woodworks-jobsite"] .totals .line.grand b { font-weight: 900; color: var(--accent-2); }
+html[data-theme="woodworks-jobsite"] .brand::before { border-radius: 0; box-shadow: 5px 5px 0 #0d0905; }
+html[data-theme="woodworks-jobsite"] .sidebar { border-left-color: var(--rust); }
+html[data-theme="woodworks-jobsite"] .page-head::after { background: repeating-linear-gradient(135deg, var(--rust) 0 10px, #1a110a 10px 20px); }
+html[data-theme="woodworks-jobsite"] .auth .card::before { border-radius: 0; box-shadow: 6px 6px 0 #0d0905; }
+html[data-theme="woodworks-jobsite"] .card { background: #1d150f; }
+html[data-theme="woodworks-jobsite"] label.field > span { font-weight: 700; letter-spacing: 0.14em; font-size: 10.5px; }
+html[data-theme="woodworks-jobsite"] .cal .dow { font-weight: 800; letter-spacing: 0.16em; }
