@@ -163,7 +163,7 @@
 
   // ------------------------------------------------------------ dashboard
   async function pageDashboard() {
-    main().innerHTML = head("Dashboard", `${esc(S.pricing.region.name)} · ${new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}`,
+    main().innerHTML = head("Dashboard", new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" }),
       `<button class="btn" id="newev">${ICON.plus} Schedule</button><button class="btn primary" id="newjob">${ICON.plus} New job</button>`) + `<div id="dash" class="empty">Loading…</div>`;
     $("#newjob").onclick = () => jobModal();
     $("#newev").onclick = () => eventModal();
