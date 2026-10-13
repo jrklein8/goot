@@ -144,6 +144,9 @@ tr.clickable { cursor: pointer; }
 tr.clickable:hover td { background: var(--surface-2); }
 td.num, th.num { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
 tr.group-head td { background: var(--bg-2); font-weight: 600; color: var(--text); padding-top: 10px; }
+tr.group-head.clickable:hover td { background: var(--surface-2); }
+.chev { display: inline-block; color: var(--muted); transition: transform 0.15s; width: 12px; }
+.chev.open { transform: rotate(90deg); }
 tr.subtotal td { color: var(--text-2); font-style: italic; }
 .table-wrap { overflow-x: auto; }
 

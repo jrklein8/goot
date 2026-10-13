@@ -372,6 +372,10 @@
   async function pageJob(id) {
     let job;
     try { job = (await api(`/api/jobs/${id}`)).job; } catch (_) { main().innerHTML = head("Job not found") + `<a href="#jobs">Back to jobs</a>`; return; }
+    const collapseKey = `collapsed-${id}`;
+    let collapsed = new Set();
+    try { collapsed = new Set(JSON.parse(localStorage.getItem(collapseKey) || "[]")); } catch (_) { /* ignore */ }
+    const saveCollapsed = () => { try { localStorage.setItem(collapseKey, JSON.stringify([...collapsed])); } catch (_) { /* ignore */ } };
     const draw = () => {
       const u = S.user, sm = job.summary;
       const groups = {};
@@ -383,19 +387,19 @@
           <div>
             <div class="card pad-0">
               <div class="card-head" style="padding:14px 18px 0"><h3>Estimate</h3>
-                <div class="row"><button class="btn sm" id="addcustom">${ICON.plus} Custom line</button><button class="btn sm" id="addmat">${ICON.plus} From price book</button><button class="btn sm primary" id="addcalc">${ICON.plus} From calculator</button></div></div>
+                <div class="row">${Object.keys(groups).length > 1 ? `<button class="btn ghost sm" id="togall">${collapsed.size >= Object.keys(groups).length ? "Expand all" : "Collapse all"}</button>` : ""}<button class="btn sm" id="addcustom">${ICON.plus} Custom line</button><button class="btn sm" id="addmat">${ICON.plus} From price book</button><button class="btn sm primary" id="addcalc">${ICON.plus} From calculator</button></div></div>
               ${job.items.length ? `<div class="table-wrap"><table>
                 <thead><tr><th style="width:44%">Item</th><th>Type</th><th class="num">Qty</th><th>Unit</th><th class="num">Unit cost</th><th class="num">Total</th><th></th></tr></thead>
-                <tbody>${Object.entries(groups).map(([g, items]) => `
-                  <tr class="group-head"><td colspan="5">${esc(g)} <span class="dim" style="font-weight:400;font-size:12px">· ${items[0].source === "custom" ? "custom" : titleCase(items[0].source)}</span></td>
+                <tbody>${Object.entries(groups).map(([g, items], gi) => { const open = !collapsed.has(g); return `
+                  <tr class="group-head clickable" data-toggle="${esc(g)}"><td colspan="5"><span class="chev ${open ? "open" : ""}">▸</span> ${esc(g)} <span class="dim" style="font-weight:400;font-size:12px">· ${items[0].source === "custom" ? "custom" : titleCase(items[0].source)} · ${items.length} line${items.length === 1 ? "" : "s"}</span></td>
                     <td class="num">${money2(items.reduce((a, i) => a + i.total, 0))}</td>
                     <td class="right"><button class="btn ghost xs danger" data-delgroup="${esc(g)}" title="Remove group">${ICON.trash}</button></td></tr>
-                  ${items.map((it) => `<tr>
+                  ${items.map((it) => `<tr class="${open ? "" : "hidden"}" data-group="${esc(g)}">
                     <td>${esc(it.description)}</td><td><span class="cat ${it.category}">${it.category}</span></td>
                     <td class="num"><input class="inline-num" data-qty="${it.id}" value="${it.qty}"></td><td class="dim">${esc(it.unit)}</td>
                     <td class="num"><input class="inline-num" data-uc="${it.id}" value="${it.unit_cost}" ${job.locked ? "disabled" : ""}></td>
                     <td class="num">${money2(it.total)}</td>
-                    <td class="right"><button class="btn ghost xs" data-delitem="${it.id}" title="Remove">✕</button></td></tr>`).join("")}`).join("")}
+                    <td class="right"><button class="btn ghost xs" data-delitem="${it.id}" title="Remove">✕</button></td></tr>`).join("")}`; }).join("")}
                 </tbody></table></div>` : `<div class="empty">No line items yet. Add from a calculator or type a custom line.</div>`}
             </div>
             <div class="card">
@@ -433,6 +437,14 @@
         </div>`;
 
       wireAgenda();
+      $$("tr[data-toggle]").forEach((tr) => (tr.onclick = (e) => {
+        if (e.target.closest("button")) return;
+        const g = tr.dataset.toggle;
+        if (collapsed.has(g)) collapsed.delete(g); else collapsed.add(g);
+        saveCollapsed(); draw();
+      }));
+      const ta = $("#togall");
+      if (ta) ta.onclick = () => { if (collapsed.size >= Object.keys(groups).length) collapsed.clear(); else Object.keys(groups).forEach((g) => collapsed.add(g)); saveCollapsed(); draw(); };
       $("select[data-status]").onchange = async (e) => { job = (await api(`/api/jobs/${job.id}`, { method: "PUT", body: { status: e.target.value } })).job; draw(); toast("Status updated", "ok"); };
       $("#edit").onclick = () => jobModal(job, (j) => { job = j; draw(); });
       const rp = $("#reprice");
