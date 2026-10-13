@@ -57,7 +57,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   title TEXT NOT NULL, client_name TEXT, client_phone TEXT, client_email TEXT,
   address TEXT, job_type TEXT, status TEXT DEFAULT 'lead', notes TEXT,
   markup_pct REAL, contingency_pct REAL, tax_pct REAL,
-  conditions TEXT DEFAULT '[]', trips INTEGER DEFAULT 0,
+  conditions TEXT DEFAULT '[]', trips INTEGER DEFAULT 0, price_sync INTEGER DEFAULT 1,
   created_at TEXT, updated_at TEXT
 );
 CREATE TABLE IF NOT EXISTS line_items (
@@ -103,6 +103,7 @@ def init_db():
     conn.executescript(SCHEMA)
     for table, col, ddl in (("jobs", "conditions", "TEXT DEFAULT '[]'"), ("jobs", "trips", "INTEGER DEFAULT 0"),
                             ("users", "price_meta", "TEXT DEFAULT '{}'"), ("users", "favorites", "TEXT DEFAULT '[]'"),
+                            ("jobs", "price_sync", "INTEGER DEFAULT 1"),
                             ("line_items", "price_key", "TEXT")):
         if col not in [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
@@ -140,14 +141,21 @@ def price_meta_for(u):
         return {}
 
 
-def reprice_unlocked(uid):
-    """Re-point every line item with a price_key on lead/estimating jobs at today's price."""
+def reprice_unlocked(uid, job_id=None):
+    """Re-point line items with a price_key at today's price. Without job_id: every lead/estimating job that
+    follows the price book. With job_id: that one job, whatever its sync setting (still never a locked one)."""
     u = db().execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
     book = pricing.merged_prices(overrides_for(u))
     customs = {str(r["id"]): r["cost"] for r in db().execute("SELECT id, cost FROM materials WHERE user_id=?", (uid,))}
-    rows = db().execute(
-        """SELECT li.id, li.job_id, li.qty, li.unit_cost, li.price_key FROM line_items li JOIN jobs j ON j.id=li.job_id
-           WHERE j.user_id=? AND j.status IN (?,?) AND li.price_key IS NOT NULL""", (uid, *UNLOCKED_STATUSES)).fetchall()
+    q = """SELECT li.id, li.job_id, li.qty, li.unit_cost, li.price_key FROM line_items li JOIN jobs j ON j.id=li.job_id
+           WHERE j.user_id=? AND j.status IN (?,?) AND li.price_key IS NOT NULL"""
+    args = [uid, *UNLOCKED_STATUSES]
+    if job_id:
+        q += " AND j.id=?"
+        args.append(job_id)
+    else:
+        q += " AND COALESCE(j.price_sync,1)=1"
+    rows = db().execute(q, args).fetchall()
     items, jobs = 0, set()
     for r in rows:
         price = pricing.current_unit_price(book, r["price_key"], lambda k: customs.get(k))
@@ -408,7 +416,15 @@ def job_row_json(j, u, with_items=False):
         conds = []
     out["conditions"] = conds
     out["locked"] = j["status"] not in UNLOCKED_STATUSES
+    out["price_sync"] = bool(j["price_sync"] if j["price_sync"] is not None else 1)
     book = pricing.merged_prices(overrides_for(u))
+    out["stale_count"] = 0
+    if not out["locked"] and not out["price_sync"]:
+        customs = {str(r["id"]): r["cost"] for r in db().execute("SELECT id, cost FROM materials WHERE user_id=?", (u["id"],))}
+        for it in items:
+            cur = pricing.current_unit_price(book, it.get("price_key"), lambda k: customs.get(k))
+            if cur is not None and abs(cur - (it["unit_cost"] or 0)) > 0.004:
+                out["stale_count"] += 1
     out["summary"] = pricing.summarize(items, book, mk, ct, tx, conds, j["trips"] or 0)
     out["item_count"] = len(items)
     if with_items:
@@ -471,7 +487,7 @@ def get_job(job_id):
 @login_required
 def update_job(job_id):
     u = current_user()
-    get_job_or_404(job_id, u["id"])
+    cur_job = get_job_or_404(job_id, u["id"])
     d = request.get_json(force=True) or {}
     fields = {}
     for k in ("title", "client_name", "client_phone", "client_email", "address", "job_type", "notes"):
@@ -479,6 +495,10 @@ def update_job(job_id):
             fields[k] = str(d[k] or "")
     if "status" in d and d["status"] in JOB_STATUSES:
         fields["status"] = d["status"]
+        if cur_job["status"] not in UNLOCKED_STATUSES and d["status"] in UNLOCKED_STATUSES:
+            fields["price_sync"] = 0   # reopened quote keeps its numbers until he says otherwise
+    if "price_sync" in d:
+        fields["price_sync"] = 1 if d["price_sync"] else 0
     for k in ("markup_pct", "contingency_pct", "tax_pct"):
         if k in d:
             fields[k] = None if d[k] in (None, "") else float(d[k])
@@ -493,7 +513,25 @@ def update_job(job_id):
     sets = ", ".join(f"{k}=?" for k in fields)
     db().execute(f"UPDATE jobs SET {sets} WHERE id=?", (*fields.values(), job_id))
     db().commit()
+    if fields.get("price_sync") == 1:
+        reprice_unlocked(u["id"], job_id)
     return jsonify(job=job_row_json(get_job_or_404(job_id, u["id"]), u, True))
+
+
+@app.post("/api/jobs/<int:job_id>/reprice")
+@login_required
+def reprice_job(job_id):
+    """One-off: pull today's price book prices into this job (lead/estimating only)."""
+    u = current_user()
+    j = get_job_or_404(job_id, u["id"])
+    if j["status"] not in UNLOCKED_STATUSES:
+        return jsonify(error="Prices are locked once a job is quoted."), 409
+    items, _ = reprice_unlocked(u["id"], job_id)
+    body = request.get_json(silent=True) or {}
+    if body.get("follow"):
+        db().execute("UPDATE jobs SET price_sync=1 WHERE id=?", (job_id,))
+        db().commit()
+    return jsonify(job=job_row_json(get_job_or_404(job_id, u["id"]), u, True), repriced=items)
 
 
 @app.delete("/api/jobs/<int:job_id>")

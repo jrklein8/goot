@@ -378,7 +378,7 @@
       job.items.forEach((it) => { (groups[it.group_label || "Other items"] ||= []).push(it); });
       main().innerHTML = head(`<span class="dim mono" style="font-size:14px;font-weight:500">${esc(job.job_no)}</span> ${esc(job.title)}`,
         `${esc(job.client_name || "No client")}${job.job_type ? ` · ${esc(job.job_type)}` : ""}`,
-        `${job.locked ? `<span class="badge quoted" title="Unit prices are frozen once a job is quoted">${ICON.lock} Prices locked</span>` : ""} ${statusSelect(job)} <button class="btn" id="edit">Edit</button><button class="btn" id="proposal">Proposal preview</button><button class="btn ghost danger" id="del">${ICON.trash}</button>`) + `
+        `${job.locked ? `<span class="badge quoted" title="Unit prices are frozen once a job is quoted">${ICON.lock} Prices locked</span>` : !job.price_sync ? `<span class="badge estimating" title="This job keeps its prices until you update them">${ICON.lock} Prices held${job.stale_count ? ` · ${job.stale_count} differ from price book` : ""}</span> <button class="btn sm" id="reprice">${ICON.refresh} Update to price book</button>` : `<button class="btn ghost sm" id="hold" title="Stop this job following price book changes">Hold prices</button>`} ${statusSelect(job)} <button class="btn" id="edit">Edit</button><button class="btn" id="proposal">Proposal preview</button><button class="btn ghost danger" id="del">${ICON.trash}</button>`) + `
         <div class="grid side">
           <div>
             <div class="card pad-0">
@@ -435,6 +435,10 @@
       wireAgenda();
       $("select[data-status]").onchange = async (e) => { job = (await api(`/api/jobs/${job.id}`, { method: "PUT", body: { status: e.target.value } })).job; draw(); toast("Status updated", "ok"); };
       $("#edit").onclick = () => jobModal(job, (j) => { job = j; draw(); });
+      const rp = $("#reprice");
+      if (rp) rp.onclick = async () => { const r = await api(`/api/jobs/${job.id}/reprice`, { method: "POST", body: { follow: true } }); job = r.job; draw(); toast(`${r.repriced} line${r.repriced === 1 ? "" : "s"} updated. This job now follows the price book.`, "ok"); };
+      const hd = $("#hold");
+      if (hd) hd.onclick = async () => { job = (await api(`/api/jobs/${job.id}`, { method: "PUT", body: { price_sync: false } })).job; draw(); toast("Prices held"); };
       $("#del").onclick = async () => { if (await confirmDlg(`Delete "${job.title}" and its estimate? Scheduled events are kept but unlinked.`)) { await api(`/api/jobs/${job.id}`, { method: "DELETE" }); toast("Job deleted"); go("jobs"); } };
       $("#addcalc").onclick = () => go(`calculators/${job.id}`);
       $("#addev").onclick = () => eventModal({ job_id: job.id, location: job.address }, () => reload());
