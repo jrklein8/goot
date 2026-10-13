@@ -737,7 +737,7 @@
       <div class="grid c2">${Object.entries(sections).map(([sec, label]) => `
         <div class="card pad-0"><div class="card-head" style="padding:14px 18px 0"><h3>${label}</h3>${S.pricing.price_meta?.series?.[sec] ? `<span class="dim" style="font-size:11px">market ${S.pricing.price_meta.series[sec].change_pct >= 0 ? "up" : "down"} ${Math.abs(S.pricing.price_meta.series[sec].change_pct)}% since June</span>` : ""}</div>
           <table><tbody>${Object.entries(book[sec]).filter(([, v]) => !v.hidden).map(([key, v]) => {
-            const fields = Object.keys(v).filter((k) => k !== "label" && k !== "unit" && k !== "hidden");
+            const fields = Object.keys(v).filter((k) => ["cost", "rate", "hours", "pct"].includes(k));
             const id = `${sec}.${key}`;
             const starCell = Object.values(book[sec]).some((b) => "unit" in b) ? `<td class="star-cell">${"unit" in v ? starHtml(id) : ""}</td>` : "";
             return `<tr>${starCell}<td class="editable" data-label="${id}" title="Double-click to rename">${esc(v.label)}</td>
