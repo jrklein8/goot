@@ -50,7 +50,7 @@ CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
   name TEXT, business_name TEXT, phone TEXT, license_no TEXT, address TEXT,
   markup_pct REAL DEFAULT 20, contingency_pct REAL DEFAULT 5, tax_pct REAL DEFAULT 7.0,
-  price_overrides TEXT DEFAULT '{}', price_meta TEXT DEFAULT '{}', ics_token TEXT UNIQUE, created_at TEXT
+  price_overrides TEXT DEFAULT '{}', price_meta TEXT DEFAULT '{}', favorites TEXT DEFAULT '[]', ics_token TEXT UNIQUE, created_at TEXT
 );
 CREATE TABLE IF NOT EXISTS jobs (
   id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, job_no TEXT,
@@ -102,7 +102,8 @@ def init_db():
     conn = sqlite3.connect(DB_PATH)
     conn.executescript(SCHEMA)
     for table, col, ddl in (("jobs", "conditions", "TEXT DEFAULT '[]'"), ("jobs", "trips", "INTEGER DEFAULT 0"),
-                            ("users", "price_meta", "TEXT DEFAULT '{}'"), ("line_items", "price_key", "TEXT")):
+                            ("users", "price_meta", "TEXT DEFAULT '{}'"), ("users", "favorites", "TEXT DEFAULT '[]'"),
+                            ("line_items", "price_key", "TEXT")):
         if col not in [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]:
             conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
     conn.commit()
@@ -129,7 +130,7 @@ def current_user():
 def user_json(u):
     return {k: u[k] for k in ("id", "email", "name", "business_name", "phone", "license_no", "address",
                               "markup_pct", "contingency_pct", "tax_pct", "ics_token")} | \
-           {"price_overrides": json.loads(u["price_overrides"] or "{}")}
+           {"price_overrides": json.loads(u["price_overrides"] or "{}"), "favorites": json.loads(u["favorites"] or "[]")}
 
 
 def price_meta_for(u):
@@ -242,6 +243,8 @@ def update_settings():
                 return jsonify(error=f"{k} must be a number"), 400
     if "price_overrides" in d and isinstance(d["price_overrides"], dict):
         fields["price_overrides"] = json.dumps(d["price_overrides"])
+    if "favorites" in d and isinstance(d["favorites"], list):
+        fields["favorites"] = json.dumps([f for f in d["favorites"] if isinstance(f, str)][:200])
     if d.get("rotate_ics_token"):
         fields["ics_token"] = secrets.token_urlsafe(24)
     if d.get("new_password"):
@@ -261,8 +264,13 @@ def update_settings():
 
 def custom_materials(uid):
     rows = db().execute("SELECT * FROM materials WHERE user_id=? ORDER BY section, label", (uid,)).fetchall()
-    return [{"id": f"custom.{r['id']}", "db_id": r["id"], "section": r["section"] or "My materials", "label": r["label"],
-             "unit": r["unit"], "cost": r["cost"], "category": r["category"], "builtin": False} for r in rows]
+    out = []
+    for r in rows:
+        sec = r["section"] or "Misc"
+        key = sec if sec in pricing.MATERIAL_SECTIONS else None
+        out.append({"id": f"custom.{r['id']}", "db_id": r["id"], "section": pricing.SECTION_LABELS.get(sec, sec), "section_key": key,
+                    "label": r["label"], "unit": r["unit"], "cost": r["cost"], "category": r["category"], "builtin": False})
+    return out
 
 
 @app.get("/api/pricing")
@@ -273,6 +281,7 @@ def get_pricing():
     return jsonify(region=pricing.REGION, book=book, calculators=pricing.calculator_catalog(),
                    materials=pricing.material_catalog(book) + custom_materials(u["id"]),
                    conditions=pricing.conditions_catalog(book), price_meta=price_meta_for(u),
+                   sections=pricing.SECTION_LABELS,
                    benchmark_source=pricing.BENCHMARK_SOURCE,
                    statuses=JOB_STATUSES, event_types=EVENT_TYPES)
 
@@ -325,7 +334,10 @@ def _material_fields(d):
     except (TypeError, ValueError):
         return None, "Cost must be a number"
     cat = d.get("category") if d.get("category") in MATERIAL_CATEGORIES else "material"
-    return {"section": (d.get("section") or "My materials").strip(), "label": label,
+    sec = pricing.normalize_section(d.get("section"))
+    if cat == "material" and sec in ("equipment", "disposal"):
+        cat = sec
+    return {"section": sec, "label": label,
             "unit": (d.get("unit") or "ea").strip(), "cost": cost, "category": cat}, None
 
 
@@ -721,11 +733,13 @@ def seed_demo(conn):
         "INSERT INTO users (email,password_hash,name,business_name,phone,license_no,address,ics_token,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
         ("demo@example.com", generate_password_hash("demo1234"), "Demo Owner", "goot buildin shit",
          "(910) 555-0142", "NC GC #00000 (limited)", "Wilmington, NC 28401", secrets.token_urlsafe(24), now())).lastrowid
+    conn.execute("UPDATE users SET favorites=? WHERE id=?",
+                 (json.dumps(["lumber.pt_2x4_lf", "lumber.spf_2x4_lf", "drywall.board_half_sqft", "hardware.drywall_screws_box", "trim.door_hollow"]), uid))
 
     for sec, label, unit, cost in [
-        ("Lumber", "Cedar 1x6 tongue-and-groove porch ceiling, per lf", "lf", 2.95),
-        ("Hardware", "Black exterior lag screw, 3/8 x 6 in", "ea", 1.35),
-        ("Drywall", "Moisture-resistant 1/2 in greenboard, per sq ft", "sqft", 0.78),
+        ("lumber", "Cedar 1x6 tongue-and-groove porch ceiling, per lf", "lf", 2.95),
+        ("hardware", "Black exterior lag screw, 3/8 x 6 in", "ea", 1.35),
+        ("drywall", "Moisture-resistant 1/2 in greenboard, 4x8 sheet", "sheet", 29.78),
         ("Misc", "Rosin paper + floor protection, per room", "ea", 24.0),
     ]:
         conn.execute("INSERT INTO materials (user_id,section,label,unit,cost,category,created_at) VALUES (?,?,?,?,?,?,?)",

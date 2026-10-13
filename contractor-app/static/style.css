@@ -189,6 +189,11 @@ select.status-select { width: auto; padding: 4px 26px 4px 8px; font-size: 12px; 
 .pct-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 .pct-row label.field span { font-size: 11px; }
 
+/* ---------- favorites ---------- */
+.star { background: none; border: none; color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 4px; }
+.star:hover { color: var(--accent-2); }
+.star.on { color: var(--accent); }
+
 /* ---------- competitor bands ---------- */
 .cmp { display: grid; gap: 10px; }
 .cmp .band { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "name range" "track track"; gap: 6px 10px; align-items: center; font-size: 12.5px; }
@@ -264,6 +269,7 @@ select.status-select { width: auto; padding: 4px 26px 4px 8px; font-size: 12px; 
 .code { font-family: var(--mono); font-size: 12px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; word-break: break-all; color: var(--text-2); }
 .price-input { width: 96px; text-align: right; font-family: var(--mono); padding: 4px 6px; font-size: 12.5px; }
 .price-input.changed { border-color: var(--accent); color: var(--accent); }
+td.right { white-space: nowrap; }
 .banner { padding: 10px 14px; border-radius: 8px; background: var(--accent-dim); border: 1px solid rgba(245, 165, 36, 0.3); font-size: 12.5px; color: var(--text-2); }
 .banner b { color: var(--accent); }
 .steps { margin: 0; padding-left: 18px; color: var(--text-2); font-size: 13px; }

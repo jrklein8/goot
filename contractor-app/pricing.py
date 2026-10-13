@@ -279,6 +279,18 @@ PRICE_BOOK = {
 
 # Sections whose entries are physical things with a unit (used by the "From price book" picker)
 MATERIAL_SECTIONS = ("lumber", "hardware", "drywall", "paint", "trim", "equipment", "disposal")
+SECTION_LABELS = {"lumber": "Lumber", "hardware": "Hardware & fasteners", "drywall": "Drywall", "trim": "Trim & doors",
+                  "paint": "Paint", "equipment": "Equipment & site protection", "disposal": "Disposal"}
+
+
+def normalize_section(value):
+    """Map a typed/selected section to a built-in key when it matches one; otherwise keep the text."""
+    v = (value or "").strip()
+    low = v.lower()
+    for key, label in SECTION_LABELS.items():
+        if low in (key, label.lower(), label.split(" ")[0].lower()):
+            return key
+    return v or "Misc"
 CATEGORY_FOR_SECTION = {"equipment": "equipment", "disposal": "disposal"}
 MARKED_UP = ("material", "equipment", "disposal", "other")
 
@@ -305,7 +317,7 @@ def material_catalog(book):
     for sec in MATERIAL_SECTIONS:
         for key, v in book[sec].items():
             if "unit" in v:
-                out.append({"id": f"{sec}.{key}", "section": sec.title(), "label": v["label"],
+                out.append({"id": f"{sec}.{key}", "section": SECTION_LABELS[sec], "section_key": sec, "label": v["label"],
                             "unit": v["unit"], "cost": v["cost"], "category": CATEGORY_FOR_SECTION.get(sec, "material"), "builtin": True})
     return out
 

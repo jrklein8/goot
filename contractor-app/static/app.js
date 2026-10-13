@@ -286,6 +286,20 @@
     setTimeout(() => $("[name=title]", m.el).focus(), 30);
   }
 
+  // ------------------------------------------------------------ favorites
+  const isFav = (id) => (S.user.favorites || []).includes(id);
+  const starHtml = (id) => `<button class="star ${isFav(id) ? "on" : ""}" data-fav="${esc(id)}" title="${isFav(id) ? "Remove from favorites" : "Add to favorites"}">${isFav(id) ? "★" : "☆"}</button>`;
+  async function toggleFav(id) {
+    const cur = S.user.favorites || [];
+    const next = cur.includes(id) ? cur.filter((x) => x !== id) : [...cur, id];
+    const { user } = await api("/api/settings", { method: "PUT", body: { favorites: next } });
+    S.user = user;
+  }
+  function wireStars(root_, after) {
+    $$("[data-fav]", root_).forEach((b) => (b.onclick = async (e) => { e.stopPropagation(); await toggleFav(b.dataset.fav); if (after) after(); }));
+  }
+  const sectionOptions = (val) => Object.entries(S.pricing.sections).map(([k, l]) => `<option value="${k}" ${val === k ? "selected" : ""}>${esc(l)}</option>`).join("") + `<option value="Misc" ${!(val in S.pricing.sections) ? "selected" : ""}>Misc / other</option>`;
+
   // ------------------------------------------------------------ market prices
   async function refreshMarketPrices(btn, after) {
     if (btn) { btn.disabled = true; btn.textContent = "Checking…"; }
@@ -446,16 +460,20 @@
     const picked = {}; // id -> qty
     const groups = [...new Set(job.items.map((i) => i.group_label))];
     const m = modal(`<h2>Add from price book</h2>
-      <div class="row mb"><input type="text" id="mq" placeholder="Search lumber, hardware, drywall, trim, paint…" class="grow"><input type="text" id="mg" list="mgroups" value="Materials" style="max-width:200px" title="Group name on the estimate"><datalist id="mgroups">${groups.map((g) => `<option value="${esc(g)}">`).join("")}</datalist></div>
-      <div class="table-wrap" style="max-height:52vh;overflow:auto"><table><thead><tr><th>Item</th><th>Section</th><th class="num">Cost</th><th class="num">Qty</th></tr></thead><tbody id="mrows"></tbody></table></div>
+      <div class="row mb"><button class="chip" id="mfav">★ Favorites</button><input type="text" id="mq" placeholder="Search lumber, hardware, drywall, trim, paint…" class="grow"><input type="text" id="mg" list="mgroups" value="Materials" style="max-width:200px" title="Group name on the estimate"><datalist id="mgroups">${groups.map((g) => `<option value="${esc(g)}">`).join("")}</datalist></div>
+      <div class="table-wrap" style="max-height:52vh;overflow:auto"><table><thead><tr><th></th><th>Item</th><th>Section</th><th class="num">Cost</th><th class="num">Qty</th></tr></thead><tbody id="mrows"></tbody></table></div>
       <div class="row between mt"><span class="dim" id="msum">Nothing picked yet</span><div class="row"><button class="btn" data-close>Cancel</button><button class="btn primary" id="save">Add to estimate</button></div></div>`, { wide: true });
+    let favOnly = false;
     const draw = () => {
       const q = $("#mq", m.el).value.toLowerCase();
-      const rows = mats.filter((x) => !q || `${x.label} ${x.section}`.toLowerCase().includes(q));
-      $("#mrows", m.el).innerHTML = rows.map((x) => `<tr><td>${esc(x.label)}${x.builtin ? "" : ' <span class="badge" style="font-size:10px">mine</span>'}</td><td class="dim">${esc(x.section)}</td><td class="num">${money2(x.cost)} <span class="dim">/ ${esc(x.unit)}</span></td>
-        <td class="num"><input class="inline-num" type="number" step="any" min="0" data-id="${esc(x.id)}" value="${picked[x.id] ?? ""}" placeholder="0"></td></tr>`).join("") || `<tr><td colspan="4" class="empty">No matches. Add it under Price book → My materials.</td></tr>`;
+      const rows = mats.filter((x) => (!favOnly || isFav(x.id)) && (!q || `${x.label} ${x.section}`.toLowerCase().includes(q)))
+        .sort((a, b) => (isFav(b.id) - isFav(a.id)));
+      $("#mrows", m.el).innerHTML = rows.map((x) => `<tr><td>${starHtml(x.id)}</td><td>${esc(x.label)}${x.builtin ? "" : ' <span class="badge" style="font-size:10px">mine</span>'}</td><td class="dim">${esc(x.section)}</td><td class="num">${money2(x.cost)} <span class="dim">/ ${esc(x.unit)}</span></td>
+        <td class="num"><input class="inline-num" type="number" step="any" min="0" data-id="${esc(x.id)}" value="${picked[x.id] ?? ""}" placeholder="0"></td></tr>`).join("") || `<tr><td colspan="5" class="empty">${favOnly ? "No favorites yet. Star items to pin them here." : "No matches. Add it under Price book."}</td></tr>`;
       $$("input[data-id]", m.el).forEach((i) => (i.oninput = () => { const v = parseFloat(i.value); if (v > 0) picked[i.dataset.id] = v; else delete picked[i.dataset.id]; sum(); }));
+      wireStars(m.el, draw);
     };
+    $("#mfav", m.el).onclick = () => { favOnly = !favOnly; $("#mfav", m.el).classList.toggle("active", favOnly); draw(); };
     const sum = () => {
       const n = Object.keys(picked).length, t = Object.entries(picked).reduce((a, [id, q]) => a + q * (mats.find((x) => x.id === id)?.cost || 0), 0);
       $("#msum", m.el).textContent = n ? `${n} item${n > 1 ? "s" : ""} · ${money2(t)} before tax/markup` : "Nothing picked yet";
@@ -685,24 +703,34 @@
     const overrides = { ...(S.user.price_overrides || {}) };
     const sections = { labor: "Labor rates ($ per hour, what the client is charged)", production: "Production rates (man-hours per unit of work)", job: "Job factors", conditions: "Site conditions (% added to labor)", competitors: "Competitor benchmarks (for the comparison card)", lumber: "Lumber", hardware: "Hardware & fasteners", drywall: "Drywall", trim: "Trim & doors", paint: "Paint", equipment: "Equipment & site protection", permits: "Permits (New Hanover County)", disposal: "Disposal", defaults: "Estimate defaults" };
     const mine = S.pricing.materials.filter((x) => !x.builtin);
+    const loose = mine.filter((x) => !x.section_key);
+    const favs = S.pricing.materials.filter((x) => isFav(x.id));
+    const customRow = (x) => `<tr>
+          <td>${starHtml(x.id)}</td>
+          <td><input type="text" data-mid="${x.db_id}" data-f="label" value="${esc(x.label)}"> <span class="badge" style="font-size:10px">mine</span></td>
+          <td class="right"><select data-mid="${x.db_id}" data-f="section" style="width:auto;padding:4px 26px 4px 8px;font-size:12px">${sectionOptions(x.section_key || x.section)}</select>
+            <input class="price-input" type="number" step="any" data-mid="${x.db_id}" data-f="cost" value="${x.cost}"> <span class="dim" style="font-size:11px">/ ${esc(x.unit)}</span>
+            <button class="btn ghost xs danger" data-delmat="${x.db_id}" title="Delete">${ICON.trash}</button></td></tr>`;
+    const builtinRow = (x) => { const [sec, key] = x.id.split("."); const o = overrides[x.id]?.cost;
+      return `<tr><td>${starHtml(x.id)}</td><td>${esc(x.label)}</td><td class="right"><input class="price-input ${o !== undefined ? "changed" : ""}" type="number" step="any" data-path="${x.id}" data-f="cost" value="${x.cost}"> <span class="dim" style="font-size:11px">/ ${esc(x.unit)}</span></td></tr>`; };
     main().innerHTML = head("Price book", marketMetaLine(),
       `<button class="btn" id="market">${ICON.refresh} Update market prices</button><button class="btn" id="addmat">${ICON.plus} Add material</button><button class="btn" id="reset">Reset built-ins</button><button class="btn primary" id="save">Save changes</button>`) + `
-      <div class="card pad-0 mb"><div class="card-head" style="padding:14px 18px 0"><h3>My materials</h3></div>
-        ${mine.length ? `<table><thead><tr><th>Item</th><th>Section</th><th>Unit</th><th class="num">Cost</th><th></th></tr></thead><tbody>${mine.map((x) => `<tr>
-          <td><input type="text" data-mid="${x.db_id}" data-f="label" value="${esc(x.label)}"></td>
-          <td><input type="text" data-mid="${x.db_id}" data-f="section" value="${esc(x.section)}" style="width:130px"></td>
-          <td><input type="text" data-mid="${x.db_id}" data-f="unit" value="${esc(x.unit)}" style="width:70px"></td>
-          <td class="num"><input class="price-input" type="number" step="any" data-mid="${x.db_id}" data-f="cost" value="${x.cost}"></td>
-          <td class="right"><button class="btn ghost xs danger" data-delmat="${x.db_id}" title="Delete">${ICON.trash}</button></td></tr>`).join("")}</tbody></table>` : `<div class="empty">No custom materials yet. Click <b>Add material</b> to put in anything you buy regularly.</div>`}</div>
+      <div class="card pad-0 mb"><div class="card-head" style="padding:14px 18px 0"><h3>★ Favorites</h3></div>
+        ${favs.length ? `<table><tbody>${favs.map((x) => x.builtin ? builtinRow(x) : customRow(x)).join("")}</tbody></table>` : `<div class="empty">Star any material below to pin it here and to the top of the job picker.</div>`}</div>
+      ${loose.length ? `<div class="card pad-0 mb"><div class="card-head" style="padding:14px 18px 0"><h3>My materials (misc)</h3></div>
+        <table><tbody>${loose.map(customRow).join("")}</tbody></table></div>` : ""}
       <div class="grid c2">${Object.entries(sections).map(([sec, label]) => `
         <div class="card pad-0"><div class="card-head" style="padding:14px 18px 0"><h3>${label}</h3>${S.pricing.price_meta?.series?.[sec] ? `<span class="dim" style="font-size:11px">market ${S.pricing.price_meta.series[sec].change_pct >= 0 ? "up" : "down"} ${Math.abs(S.pricing.price_meta.series[sec].change_pct)}% since June</span>` : ""}</div>
           <table><tbody>${Object.entries(book[sec]).map(([key, v]) => {
             const fields = Object.keys(v).filter((k) => k !== "label" && k !== "unit");
-            return `<tr><td>${esc(v.label)}</td>
-              <td class="right">${fields.map((f) => `<span class="dim" style="font-size:11px;margin-left:8px">${fields.length > 1 ? f : ""}</span> <input class="price-input ${overrides[`${sec}.${key}`]?.[f] !== undefined ? "changed" : ""}" type="number" step="any" data-path="${sec}.${key}" data-f="${f}" value="${v[f]}">`).join("")}</td></tr>`; }).join("")}
+            const id = `${sec}.${key}`;
+            return `<tr><td style="width:28px">${"unit" in v ? starHtml(id) : ""}</td><td>${esc(v.label)}</td>
+              <td class="right">${fields.map((f) => `<span class="dim" style="font-size:11px;margin-left:8px">${fields.length > 1 ? f : ""}</span> <input class="price-input ${overrides[id]?.[f] !== undefined ? "changed" : ""}" type="number" step="any" data-path="${id}" data-f="${f}" value="${v[f]}">`).join("")}${"unit" in v ? ` <span class="dim" style="font-size:11px">/ ${esc(v.unit)}</span>` : ""}</td></tr>`; }).join("")}
+          ${mine.filter((x) => x.section_key === sec).map(customRow).join("")}
           </tbody></table></div>`).join("")}</div>`;
+    wireStars(document, () => render());
     const dirty = {};
-    $$(".price-input").forEach((i) => (i.oninput = () => { (dirty[i.dataset.path] ||= {})[i.dataset.f] = i.value; i.classList.add("changed"); }));
+    $$(".price-input[data-path]").forEach((i) => (i.oninput = () => { (dirty[i.dataset.path] ||= {})[i.dataset.f] = i.value; $$(`.price-input[data-path="${i.dataset.path}"]`).forEach((o) => { o.value = i.value; o.classList.add("changed"); }); }));
     $("#save").onclick = async () => {
       const merged = { ...overrides };
       Object.entries(dirty).forEach(([p, vals]) => (merged[p] = { ...(merged[p] || {}), ...vals }));
@@ -711,7 +739,7 @@
     };
     $("#addmat").onclick = () => materialModal();
     $("#market").onclick = (e) => refreshMarketPrices(e.currentTarget, () => render());
-    const saveMat = async (id, body) => { const row = mine.find((x) => x.db_id === +id); await api(`/api/materials/${id}`, { method: "PUT", body: { ...row, ...body } }); Object.assign(row, body); toast("Material saved", "ok"); };
+    const saveMat = async (id, body) => { const row = mine.find((x) => x.db_id === +id); await api(`/api/materials/${id}`, { method: "PUT", body: { ...row, section: row.section_key || row.section, ...body } }); toast("Material saved", "ok"); if ("section" in body) { await loadPricing(); render(); } else Object.assign(row, body); };
     $$("[data-mid]").forEach((i) => (i.onchange = () => saveMat(i.dataset.mid, { [i.dataset.f]: i.value })));
     $$("[data-delmat]").forEach((b) => (b.onclick = async () => { if (!(await confirmDlg("Delete this material from your price book?"))) return; await api(`/api/materials/${b.dataset.delmat}`, { method: "DELETE" }); await loadPricing(); render(); }));
     $("#reset").onclick = async () => {
@@ -726,7 +754,7 @@
     const m = modal(`<h2>Add material</h2>
       <form id="mf" class="form-grid">
         <label class="field full"><span>Name *</span><input name="label" type="text" required placeholder="e.g. Cedar 1x6 T&G, per lf"></label>
-        <label class="field"><span>Section</span><input name="section" type="text" list="secs" placeholder="Lumber, Hardware, Misc…"><datalist id="secs">${["Lumber", "Hardware", "Drywall", "Trim", "Paint", "Misc", ...secs].filter((v, i, a) => a.indexOf(v) === i).map((x) => `<option value="${esc(x)}">`).join("")}</datalist></label>
+        <label class="field"><span>Section</span><select name="section">${sectionOptions("lumber")}</select></label>
         <label class="field"><span>Category</span><select name="category">${["material", "labor", "equipment", "disposal", "other"].map((c) => `<option>${c}</option>`).join("")}</select></label>
         <label class="field"><span>Unit</span><input name="unit" type="text" value="ea" list="units"><datalist id="units">${["ea", "lf", "sqft", "sheet", "box", "lb", "gal", "bag", "hr", "load"].map((x) => `<option value="${x}">`).join("")}</datalist></label>
         <label class="field"><span>Cost per unit ($) *</span><input name="cost" type="number" step="0.01" required></label>
