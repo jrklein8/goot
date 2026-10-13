@@ -93,6 +93,25 @@ Flask + SQLite backend (`app.py`, `pricing.py`), vanilla JS single-page
 frontend (`static/`). No build step. The database and session secret are
 created in `data/` on first run and are gitignored.
 
+## Put it online (Railway)
+
+GitHub Pages can't host this (it needs a Python server), but Railway can:
+
+1. Railway → **New Project → Deploy from GitHub repo** → pick `goot`.
+2. In the service **Settings → Root Directory** set `contractor-app`.
+   Railway detects Python, installs `requirements.txt`, and uses the
+   start command in `railway.json` (gunicorn).
+3. **Variables**: add `DATA_DIR` = `/data` and `SECRET_KEY` = any long
+   random string.
+4. **Volumes → Add volume**, mount path `/data`. This keeps the SQLite
+   database and all his jobs across deploys. Without it, data resets on
+   every deploy (fine for a throwaway demo).
+5. **Settings → Networking → Generate Domain**. Open it, sign in with the
+   demo account, or create a real account from the login page.
+
+Every push to `main` redeploys. Change the demo password (or delete the
+demo account) before giving the link to anyone.
+
 ## Obvious next steps for a real build
 
 - Two-way Google Calendar sync via OAuth (events made on his phone flow back).

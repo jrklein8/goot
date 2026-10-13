@@ -18,13 +18,16 @@ from werkzeug.security import generate_password_hash, check_password_hash
 import pricing
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE, "data", "app.db")
-SECRET_PATH = os.path.join(BASE, "data", "secret.key")
+DATA_DIR = os.environ.get("DATA_DIR") or os.path.join(BASE, "data")   # on Railway: a mounted volume, e.g. /data
+DB_PATH = os.path.join(DATA_DIR, "app.db")
+SECRET_PATH = os.path.join(DATA_DIR, "secret.key")
 
 app = Flask(__name__, static_folder=os.path.join(BASE, "static"), static_url_path="/static")
 
 
 def _secret():
+    if os.environ.get("SECRET_KEY"):
+        return os.environ["SECRET_KEY"]
     os.makedirs(os.path.dirname(SECRET_PATH), exist_ok=True)
     if not os.path.exists(SECRET_PATH):
         with open(SECRET_PATH, "w") as f:
@@ -37,6 +40,7 @@ app.secret_key = _secret()
 app.json.sort_keys = False  # keep status / calculator order as defined
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0  # no stale CSS/JS while iterating
 app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
+                  SESSION_COOKIE_SECURE=bool(os.environ.get("RAILWAY_ENVIRONMENT") or os.environ.get("FORCE_HTTPS")),
                   PERMANENT_SESSION_LIFETIME=timedelta(days=14))
 
 JOB_STATUSES = ["lead", "estimating", "quoted", "approved", "in_progress", "complete", "lost"]
@@ -877,4 +881,4 @@ init_db()
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     print(f"\n  Contractor app running at http://localhost:{port}\n  Demo login: demo@example.com / demo1234\n")
-    app.run(host="127.0.0.1", port=port, debug=False)
+    app.run(host="0.0.0.0" if os.environ.get("PORT") else "127.0.0.1", port=port, debug=False)
