@@ -312,6 +312,8 @@ def merged_prices(overrides=None):
             section, key = path.split(".", 1)
             if section in book and key in book[section] and isinstance(vals, dict):
                 for k, v in vals.items():
+                    if v is None or v == "":
+                        continue
                     if k == "hidden":
                         book[section][key]["hidden"] = bool(v)
                     elif k == "piece_ft":
