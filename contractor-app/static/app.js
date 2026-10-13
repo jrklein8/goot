@@ -708,10 +708,9 @@
     const favs = S.pricing.materials.filter((x) => isFav(x.id));
     const customRow = (x) => `<tr>
           <td class="star-cell">${starHtml(x.id)}</td>
-          <td class="editable" data-clabel="${x.db_id}" title="Double-click to rename">${esc(x.label)}</td>
+          <td><span class="editable" data-clabel="${x.db_id}" title="Double-click to rename">${esc(x.label)}</span> <span class="mover" data-move="${x.db_id}"><button class="btn ghost xs" title="Move to another section">${ICON.move}</button></span></td>
           <td class="right"><input class="price-input" type="number" step="any" data-mid="${x.db_id}" data-f="cost" value="${x.cost}"> <span class="dim editable" style="font-size:11px" data-cunit="${x.db_id}" title="Double-click to change the unit">/ ${esc(x.unit)}</span>
-            <span class="mover" data-move="${x.db_id}"><button class="btn ghost xs" title="Move to another section">${ICON.move}</button></span>
-            <button class="btn ghost xs danger" data-delmat="${x.db_id}" title="Delete">${ICON.trash}</button></td></tr>`;
+            <button class="btn ghost xs danger hidden" data-delmat="${x.db_id}" title="Delete">${ICON.trash}</button></td></tr>`;
     const builtinRow = (x) => { const [sec, key] = x.id.split("."); const o = overrides[x.id]?.cost;
       return `<tr><td class="star-cell">${starHtml(x.id)}</td><td class="editable" data-label="${x.id}" title="Double-click to rename">${esc(x.label)}</td><td class="right"><input class="price-input ${o !== undefined ? "changed" : ""}" type="number" step="any" data-path="${x.id}" data-f="cost" value="${x.cost}"> <span class="dim editable" style="font-size:11px" data-unit="${x.id}" title="Double-click to change the unit">/ ${esc(x.unit)}</span></td></tr>`; };
     main().innerHTML = head("Price book", marketMetaLine(),
@@ -731,7 +730,7 @@
           ${mine.filter((x) => x.section_key === sec).map(customRow).join("")}
           </tbody></table></div>`).join("")}</div>`;
     wireStars(document, () => render());
-    const inlineEdit = (el, id, field, orig, display, saver) => {
+    const inlineEdit = (el, id, field, orig, display, saver, onDone) => {
       if (el.querySelector("input")) return;
       el.innerHTML = `<input type="text" value="${esc(orig)}" style="padding:4px 8px;${field === "unit" ? "width:70px" : ""}">`;
       const inp = el.querySelector("input");
@@ -740,7 +739,7 @@
       const finish = async (save) => {
         if (done) return; done = true;
         const val = inp.value.trim();
-        if (!save || !val || val === orig) { el.textContent = display(orig); return; }
+        if (!save || !val || val === orig) { el.textContent = display(orig); if (onDone) onDone(); return; }
         if (saver) await saver(val);
         else {
           const merged = { ...(S.user.price_overrides || {}), [id]: { ...((S.user.price_overrides || {})[id] || {}), [field]: val } };
@@ -749,6 +748,7 @@
         }
         await loadPricing();
         el.textContent = display(val);
+        if (onDone) onDone();
         toast(field === "unit" ? "Unit changed" : "Renamed", "ok");
       };
       inp.onkeydown = (e) => { if (e.key === "Enter") finish(true); if (e.key === "Escape") finish(false); };
@@ -757,8 +757,9 @@
     $$("td[data-label]").forEach((td) => (td.ondblclick = () => inlineEdit(td, td.dataset.label, "label", td.textContent, (v) => v)));
     $$("[data-unit]").forEach((sp) => (sp.ondblclick = () => inlineEdit(sp, sp.dataset.unit, "unit", sp.textContent.replace(/^\/\s*/, ""), (v) => `/ ${v}`)));
     const customSave = (id, field) => async (val) => { const row = mine.find((x) => x.db_id === +id); await api(`/api/materials/${id}`, { method: "PUT", body: { ...row, section: row.section_key || row.section, [field]: val } }); };
-    $$("td[data-clabel]").forEach((td) => (td.ondblclick = () => inlineEdit(td, td.dataset.clabel, "label", td.textContent, (v) => v, customSave(td.dataset.clabel, "label"))));
-    $$("[data-cunit]").forEach((sp) => (sp.ondblclick = () => inlineEdit(sp, sp.dataset.cunit, "unit", sp.textContent.replace(/^\/\s*/, ""), (v) => `/ ${v}`, customSave(sp.dataset.cunit, "unit"))));
+    const showDel = (el, on) => { const b = el.closest("tr").querySelector("[data-delmat]"); if (b) b.classList.toggle("hidden", !on); };
+    $$("[data-clabel]").forEach((sp) => (sp.ondblclick = () => { showDel(sp, true); inlineEdit(sp, sp.dataset.clabel, "label", sp.textContent, (v) => v, customSave(sp.dataset.clabel, "label"), () => setTimeout(() => showDel(sp, false), 250)); }));
+    $$("[data-cunit]").forEach((sp) => (sp.ondblclick = () => { showDel(sp, true); inlineEdit(sp, sp.dataset.cunit, "unit", sp.textContent.replace(/^\/\s*/, ""), (v) => `/ ${v}`, customSave(sp.dataset.cunit, "unit"), () => setTimeout(() => showDel(sp, false), 250)); }));
     const armMover = (wrap) => {
       wrap.querySelector("button").onclick = () => {
         const row = mine.find((x) => x.db_id === +wrap.dataset.move);
