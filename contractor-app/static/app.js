@@ -940,9 +940,6 @@
               <div class="row"><button class="btn">Change password</button><button class="btn ghost" type="button" id="rotate">Reset calendar link</button></div>
             </form>
           </div>
-          <div class="card"><h3 class="mb">Look</h3>
-            <div class="chips">${[["default", "Original"], ["jobsite", "Jobsite"], ["woodworks", "Woodworks"], ["woodworks-board", "Woodworks · Board"], ["woodworks-plates", "Woodworks · Plates"], ["woodworks-jobsite", "Woodworks × Jobsite"]].map(([k, l]) => `<button class="chip ${(document.documentElement.dataset.theme || "default") === k ? "active" : ""}" data-theme-pick="${k}">${l}</button>`).join("")}</div>
-          </div>
           <div class="card"><h3 class="mb">Backups</h3>
             <div id="bkinfo" class="muted" style="font-size:13px">Checking…</div>
             <div class="row mt"><a class="btn" href="/api/backup/download">${ICON.ext} Download a copy</a><button class="btn ghost" id="bknow">Back up now</button></div>
@@ -952,7 +949,6 @@
     $("#bf").onsubmit = save($("#bf"), "Business saved");
     $("#df").onsubmit = save($("#df"), "Defaults saved");
     $("#pf").onsubmit = async (e) => { e.preventDefault(); const pw = $("[name=new_password]").value; if (pw.length < 8) return toast("Password must be 8+ characters", "err"); await api("/api/settings", { method: "PUT", body: { new_password: pw } }); toast("Password changed", "ok"); $("[name=new_password]").value = ""; };
-    $$("[data-theme-pick]").forEach((b) => (b.onclick = () => { const k = b.dataset.themePick; try { localStorage.setItem("theme", k); } catch (_) { /* ignore */ } if (k === "default") delete document.documentElement.dataset.theme; else document.documentElement.dataset.theme = k; render(); }));
     const bk = async () => { try { const b = await api("/api/backup/status"); $("#bkinfo").innerHTML = `Nightly at ${esc(b.hour)}:00 server time · ${b.count} kept on disk · last: ${b.last ? fmtDT(b.last) : "none yet"}${b.offsite ? " · also copied off-site" : ""}`; } catch (_) { $("#bkinfo").textContent = "Status unavailable"; } };
     bk();
     $("#bknow").onclick = async () => { try { await api("/api/backup/now", { method: "POST" }); toast("Backup written", "ok"); bk(); } catch (err) { toast(err.message, "err"); } };
