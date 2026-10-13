@@ -153,7 +153,6 @@
   function renderAuth(mode = "login") {
     root.innerHTML = `
       <div class="auth-wrap"><div class="auth"><div class="card">
-        <div class="brand"><div class="logo">J</div><div><div class="name">Job Estimator</div><div class="sub">Estimating + scheduling for contractors</div></div></div>
         <div class="tabs"><button class="${mode === "login" ? "active" : ""}" data-m="login">Sign in</button><button class="${mode === "register" ? "active" : ""}" data-m="register">Create account</button></div>
         <form id="authf" class="stack">
           ${mode === "register" ? `<label class="field"><span>Your name</span><input name="name" type="text" autocomplete="name"></label>
@@ -163,11 +162,8 @@
           <div class="error" id="autherr"></div>
           <button class="btn primary" style="justify-content:center">${mode === "login" ? "Sign in" : "Create account"}</button>
         </form>
-        ${mode === "login" ? `<div class="demo-hint">Demo account: <b>demo@example.com</b> / <b>demo1234</b> <button class="btn xs" id="demo" style="margin-left:8px">Fill it in</button></div>` : ""}
       </div></div></div>`;
     $$(".tabs button").forEach((b) => (b.onclick = () => renderAuth(b.dataset.m)));
-    const demo = $("#demo");
-    if (demo) demo.onclick = () => { $("[name=email]").value = "demo@example.com"; $("[name=password]").value = "demo1234"; };
     $("#authf").onsubmit = async (e) => {
       e.preventDefault();
       try {
