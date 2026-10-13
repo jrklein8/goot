@@ -1,0 +1,124 @@
+/* =====================================================================
+   THEME: WOODWORKS
+   Built from the Ash & Elm logo: rust on sand, chunky rounded caps,
+   lightning bolts. Dark espresso base, sand ink, rust accent.
+   ===================================================================== */
+html[data-theme="woodworks"] {
+  --bg: #140f0b; --bg-2: #18120d; --surface: #1f1711; --surface-2: #29201a; --surface-3: #352a21;
+  --border: #3a2d22; --border-2: #51402f; --text: #ecd6b6; --text-2: #c7ab8a; --muted: #8d7458;
+  --accent: #cf6a3e; --accent-2: #e58253; --accent-dim: rgba(207, 106, 62, 0.16);
+  --sand: #e9c9a0; --rust: #8b4324;
+  --green: #a3c27a; --blue: #8db8d8; --purple: #c7a2cf; --teal: #7fc9b8; --pink: #e59ab0; --red: #e46a5a;
+  --radius: 8px; --radius-sm: 5px;
+  --font: "Rubik", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Consolas, monospace;
+  --bolt: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M13 2 3 14h7l-1 8 10-12h-7z' fill='%23cf6a3e'/%3E%3C/svg%3E");
+}
+html[data-theme="woodworks"] body { background: radial-gradient(900px 500px at 10% -10%, rgba(207, 106, 62, 0.10), transparent 60%), var(--bg); font-size: 14.5px; }
+html[data-theme="woodworks"] a { color: var(--accent-2); }
+
+/* type: WOODWORKS-style caps */
+html[data-theme="woodworks"] h1 { font-weight: 900; font-size: 28px; text-transform: uppercase; letter-spacing: 0.06em; line-height: 1.05; color: var(--sand); }
+html[data-theme="woodworks"] h1 .dim { font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: 0.1em; color: var(--accent); }
+html[data-theme="woodworks"] h2 { font-weight: 800; font-size: 19px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--sand); }
+html[data-theme="woodworks"] h3 { font-weight: 800; font-size: 12px; letter-spacing: 0.2em; color: var(--sand); display: flex; align-items: center; gap: 6px; }
+html[data-theme="woodworks"] h3::before { content: ""; width: 12px; height: 12px; background: var(--bolt) center / contain no-repeat; }
+html[data-theme="woodworks"] .page-head { margin-bottom: 24px; padding-bottom: 14px; border-bottom: 1px solid var(--border-2); }
+html[data-theme="woodworks"] .page-head .sub { font-weight: 600; font-size: 11.5px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--muted); }
+
+/* layout */
+html[data-theme="woodworks"] .sidebar { background: var(--bg-2); border-right: 1px solid var(--border-2); }
+html[data-theme="woodworks"] .brand { flex-direction: column; align-items: center; text-align: center; gap: 10px; padding: 6px 8px 22px; }
+html[data-theme="woodworks"] .brand::before { content: ""; width: 150px; height: 146px; border-radius: 12px; background: url("/static/ash-elm-logo.png") center / cover no-repeat; box-shadow: 0 10px 24px rgba(0, 0, 0, 0.45); }
+html[data-theme="woodworks"] .brand .logo { display: none; }
+html[data-theme="woodworks"] .brand .name { font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: 0.2em; color: var(--muted); }
+html[data-theme="woodworks"] .nav a { border-radius: var(--radius); font-weight: 700; font-size: 12.5px; text-transform: uppercase; letter-spacing: 0.12em; padding: 10px 12px; }
+html[data-theme="woodworks"] .nav a:hover { background: var(--surface); color: var(--sand); }
+html[data-theme="woodworks"] .nav a.active { background: var(--rust); color: var(--sand); }
+html[data-theme="woodworks"] .nav a.active svg { opacity: 1; }
+html[data-theme="woodworks"] .userbox { border-top: 1px solid var(--border-2); }
+
+/* cards: warm walnut panels */
+html[data-theme="woodworks"] .card { background: linear-gradient(180deg, #221a13, #1d150f); border: 1px solid var(--border-2); border-radius: var(--radius); }
+html[data-theme="woodworks"] .stat .label { font-weight: 800; font-size: 10.5px; letter-spacing: 0.2em; color: var(--muted); }
+html[data-theme="woodworks"] .stat .value { font-weight: 900; font-size: 36px; letter-spacing: 0; color: var(--sand); line-height: 1; margin-top: 10px; }
+html[data-theme="woodworks"] .stat .value.accent { color: var(--accent-2); }
+html[data-theme="woodworks"] .stat .foot { font-weight: 500; font-size: 12px; color: var(--muted); }
+
+/* buttons: rust blocks with rounded corners, like the lettering */
+html[data-theme="woodworks"] .btn { border-radius: var(--radius); border: 1px solid var(--border-2); background: var(--surface-2); font-weight: 800; font-size: 12px; text-transform: uppercase; letter-spacing: 0.12em; padding: 9px 14px; color: var(--sand); }
+html[data-theme="woodworks"] .btn:hover { background: var(--surface-3); border-color: var(--accent); }
+html[data-theme="woodworks"] .btn.primary { background: var(--rust); border-color: var(--rust); color: var(--sand); }
+html[data-theme="woodworks"] .btn.primary:hover { background: var(--accent); border-color: var(--accent); color: #1a110a; }
+html[data-theme="woodworks"] .btn.ghost { background: transparent; border-color: transparent; color: var(--text-2); }
+html[data-theme="woodworks"] .btn.ghost:hover { border-color: var(--border-2); color: var(--sand); }
+html[data-theme="woodworks"] .btn.danger { color: var(--red); }
+html[data-theme="woodworks"] .btn.sm { padding: 6px 10px; font-size: 11px; } html[data-theme="woodworks"] .btn.xs { padding: 4px 8px; font-size: 10.5px; }
+
+/* forms */
+html[data-theme="woodworks"] input[type=text], html[data-theme="woodworks"] input[type=email], html[data-theme="woodworks"] input[type=password],
+html[data-theme="woodworks"] input[type=number], html[data-theme="woodworks"] input[type=date], html[data-theme="woodworks"] input[type=datetime-local],
+html[data-theme="woodworks"] select, html[data-theme="woodworks"] textarea { background: #100c08; border: 1px solid var(--border-2); border-radius: var(--radius-sm); color: var(--sand); }
+html[data-theme="woodworks"] input:focus, html[data-theme="woodworks"] select:focus, html[data-theme="woodworks"] textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-dim); }
+html[data-theme="woodworks"] label.field > span { font-weight: 700; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.14em; color: var(--muted); }
+html[data-theme="woodworks"] input[type=checkbox] { accent-color: var(--accent); }
+
+/* tags */
+html[data-theme="woodworks"] .badge { border-radius: var(--radius-sm); font-weight: 800; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.12em; padding: 3px 8px; background: var(--surface-3); }
+html[data-theme="woodworks"] .badge::before { display: none; }
+html[data-theme="woodworks"] .badge.quoted { background: var(--rust); color: var(--sand); }
+html[data-theme="woodworks"] .badge.approved { background: #4f6b3a; color: var(--sand); }
+html[data-theme="woodworks"] .badge.estimating { background: #3f5a6e; color: var(--sand); }
+html[data-theme="woodworks"] .badge.in_progress { background: #3f6b63; color: var(--sand); }
+html[data-theme="woodworks"] .badge.complete { background: #5e4a6a; color: var(--sand); }
+html[data-theme="woodworks"] .badge.lost { background: #6e3a33; color: var(--sand); }
+html[data-theme="woodworks"] .badge.lead { background: var(--surface-3); color: var(--text-2); }
+html[data-theme="woodworks"] select.status-select { border-radius: var(--radius-sm); font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; font-size: 10.5px; }
+html[data-theme="woodworks"] .cat { border-radius: var(--radius-sm); font-weight: 800; letter-spacing: 0.1em; }
+html[data-theme="woodworks"] .chip { border-radius: var(--radius); font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; font-size: 11px; }
+html[data-theme="woodworks"] .chip.active { background: var(--rust); border-color: var(--rust); color: var(--sand); }
+html[data-theme="woodworks"] .meta-chip { border-radius: var(--radius-sm); font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; }
+html[data-theme="woodworks"] .meta-chip b { color: var(--accent-2); }
+html[data-theme="woodworks"] .star.on { color: var(--accent-2); }
+
+/* tables */
+html[data-theme="woodworks"] th { font-weight: 800; letter-spacing: 0.16em; color: var(--muted); border-bottom: 1px solid var(--border-2); }
+html[data-theme="woodworks"] td { border-bottom: 1px solid var(--border); }
+html[data-theme="woodworks"] tr.group-head td { background: #1a120c; font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; font-size: 12.5px; color: var(--sand); border-top: 1px solid var(--border-2); }
+html[data-theme="woodworks"] tr.clickable:hover td { background: var(--surface-2); }
+html[data-theme="woodworks"] td.num, html[data-theme="woodworks"] th.num { font-family: var(--mono); }
+
+/* totals */
+html[data-theme="woodworks"] .totals .line b { font-family: var(--mono); }
+html[data-theme="woodworks"] .totals .line.grand { border-top: 2px solid var(--accent); padding-top: 12px; }
+html[data-theme="woodworks"] .totals .line.grand span { font-weight: 800; text-transform: uppercase; letter-spacing: 0.16em; font-size: 11.5px; align-self: center; color: var(--sand); }
+html[data-theme="woodworks"] .totals .line.grand b { font-family: var(--font); font-weight: 900; font-size: 30px; color: var(--accent-2); }
+
+/* pipeline / calendar / misc */
+html[data-theme="woodworks"] .pipe { background: #100c08; }
+html[data-theme="woodworks"] .c-lead { background: #5a4a3b; } html[data-theme="woodworks"] .c-quoted { background: var(--accent); }
+html[data-theme="woodworks"] .cal { background: var(--border); border-color: var(--border-2); border-radius: var(--radius); }
+html[data-theme="woodworks"] .cal .dow { background: #18120d; font-weight: 800; letter-spacing: 0.16em; }
+html[data-theme="woodworks"] .cal .day { background: #1e1610; }
+html[data-theme="woodworks"] .cal .day.other { background: #16100b; }
+html[data-theme="woodworks"] .cal .day.today .n { background: var(--accent); color: #1a110a; font-weight: 800; }
+html[data-theme="woodworks"] .ev { background: #2d2218; }
+html[data-theme="woodworks"] .agenda .when .d { font-weight: 900; font-size: 22px; color: var(--sand); }
+html[data-theme="woodworks"] .agenda .when .m { font-weight: 800; letter-spacing: 0.16em; }
+html[data-theme="woodworks"] .cmp .track { background: #100c08; }
+html[data-theme="woodworks"] .cmp .band.small .track span { background: var(--accent-dim); box-shadow: inset 0 0 0 1px var(--accent); }
+html[data-theme="woodworks"] .cmp .you { background: var(--accent-2); box-shadow: 0 0 8px var(--accent); }
+html[data-theme="woodworks"] .code { background: #100c08; }
+html[data-theme="woodworks"] .modal { border-radius: 12px; border: 1px solid var(--border-2); background: #1f1711; }
+html[data-theme="woodworks"] .toast { border-left-color: var(--accent); background: var(--surface-2); }
+html[data-theme="woodworks"] .toast.ok { border-left-color: var(--green); }
+
+/* sign-in: the logo up top, like a shop sign */
+html[data-theme="woodworks"] .auth-wrap { background: radial-gradient(900px 500px at 50% -10%, rgba(207, 106, 62, 0.14), transparent 60%), var(--bg); }
+html[data-theme="woodworks"] .auth .card { padding: 30px; border-top: 4px solid var(--rust); }
+html[data-theme="woodworks"] .auth .card::before { content: ""; display: block; width: 200px; height: 194px; margin: 0 auto 22px; border-radius: 14px; background: url("/static/ash-elm-logo.png") center / cover no-repeat; box-shadow: 0 14px 30px rgba(0, 0, 0, 0.5); }
+html[data-theme="woodworks"] .auth .tabs { border-radius: var(--radius); background: #100c08; }
+html[data-theme="woodworks"] .auth .tabs button { border-radius: var(--radius-sm); font-weight: 800; text-transform: uppercase; letter-spacing: 0.12em; font-size: 11px; }
+html[data-theme="woodworks"] .auth .tabs button.active { background: var(--rust); color: var(--sand); }
+html[data-theme="woodworks"] .greeting { font-weight: 900; text-transform: uppercase; letter-spacing: 0.06em; }
+html[data-theme="woodworks"] .proposal { border-radius: var(--radius); }
