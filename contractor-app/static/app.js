@@ -90,6 +90,8 @@
     gear: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>',
     plus: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 5v14M5 12h14"/></svg>',
     trash: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>',
+    refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-2.6-6.4"/><path d="M21 3v6h-6"/></svg>',
+    lock: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
     ext: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4h6v6M20 4l-9 9M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>',
   };
 
@@ -115,7 +117,7 @@
       <div id="app">
         <aside class="sidebar">
           <div class="brand"><div class="logo">${esc((S.user.business_name || "C")[0].toUpperCase())}</div>
-            <div><div class="name">${esc(S.user.business_name || "Job Estimator")}</div><div class="sub">Wilmington, NC</div></div></div>
+            <div><div class="name">${esc(S.user.business_name || "Job Estimator")}</div></div></div>
           <nav class="nav">${nav.map(([r, l, i]) => `<a href="#${r}" class="${page === r ? "active" : ""}">${i}<span>${l}</span></a>`).join("")}</nav>
           <div class="spacer"></div>
           <div class="userbox"><div class="biz">${esc(S.user.name || S.user.email)}</div><div class="dim">${esc(S.user.email)}</div>
@@ -281,6 +283,24 @@
     setTimeout(() => $("[name=title]", m.el).focus(), 30);
   }
 
+  // ------------------------------------------------------------ market prices
+  async function refreshMarketPrices(btn, after) {
+    if (btn) { btn.disabled = true; btn.textContent = "Checking…"; }
+    try {
+      const r = await api("/api/prices/refresh", { method: "POST" });
+      await loadPricing();
+      const moves = r.sections.map((x) => `${x.label} ${x.change_pct >= 0 ? "+" : ""}${x.change_pct}%`).join(", ");
+      toast(`Prices updated (${r.latest_month}): ${moves}. ${r.repriced_items} line${r.repriced_items === 1 ? "" : "s"} on ${r.repriced_jobs} open estimate${r.repriced_jobs === 1 ? "" : "s"} repriced.`, "ok");
+      if (after) after();
+    } catch (err) { toast(err.message, "err"); }
+    finally { if (btn) { btn.disabled = false; btn.innerHTML = `${ICON.refresh} Update market prices`; } }
+  }
+  function marketMetaLine() {
+    const m = S.pricing.price_meta;
+    if (!m || !m.updated) return `<span class="dim">Prices not yet updated from the market index.</span>`;
+    return `<span class="dim">Market prices as of ${esc(m.latest_month)} · updated ${fmtDate(m.updated, { month: "short", day: "numeric", year: "numeric" })}</span>`;
+  }
+
   // ------------------------------------------------------------ totals + competitors
   function totalsHtml(sm) {
     const hrs = sm.labor_hours_adj || sm.labor_hours || 0;
@@ -321,7 +341,7 @@
       job.items.forEach((it) => { (groups[it.group_label || "Other items"] ||= []).push(it); });
       main().innerHTML = head(`<span class="dim mono" style="font-size:14px;font-weight:500">${esc(job.job_no)}</span> ${esc(job.title)}`,
         `${esc(job.client_name || "No client")}${job.job_type ? ` · ${esc(job.job_type)}` : ""}`,
-        `${statusSelect(job)} <button class="btn" id="edit">Edit</button><button class="btn" id="proposal">Proposal preview</button><button class="btn ghost danger" id="del">${ICON.trash}</button>`) + `
+        `${job.locked ? `<span class="badge quoted" title="Unit prices are frozen once a job is quoted">${ICON.lock} Prices locked</span>` : ""} ${statusSelect(job)} <button class="btn" id="edit">Edit</button><button class="btn" id="proposal">Proposal preview</button><button class="btn ghost danger" id="del">${ICON.trash}</button>`) + `
         <div class="grid side">
           <div>
             <div class="card pad-0">
@@ -336,7 +356,7 @@
                   ${items.map((it) => `<tr>
                     <td>${esc(it.description)}</td><td><span class="cat ${it.category}">${it.category}</span></td>
                     <td class="num"><input class="inline-num" data-qty="${it.id}" value="${it.qty}"></td><td class="dim">${esc(it.unit)}</td>
-                    <td class="num"><input class="inline-num" data-uc="${it.id}" value="${it.unit_cost}"></td>
+                    <td class="num"><input class="inline-num" data-uc="${it.id}" value="${it.unit_cost}" ${job.locked ? "disabled" : ""}></td>
                     <td class="num">${money2(it.total)}</td>
                     <td class="right"><button class="btn ghost xs" data-delitem="${it.id}" title="Remove">✕</button></td></tr>`).join("")}`).join("")}
                 </tbody></table></div>` : `<div class="empty">No line items yet. Add from a calculator or type a custom line.</div>`}
@@ -439,7 +459,7 @@
     };
     $("#mq", m.el).oninput = draw;
     $("#save", m.el).onclick = async () => {
-      const items = Object.entries(picked).map(([id, qty]) => { const x = mats.find((y) => y.id === id); return { description: x.label, category: x.category, qty, unit: x.unit, unit_cost: x.cost, source: "pricebook" }; });
+      const items = Object.entries(picked).map(([id, qty]) => { const x = mats.find((y) => y.id === id); return { description: x.label, category: x.category, qty, unit: x.unit, unit_cost: x.cost, source: "pricebook", price_key: x.id }; });
       if (!items.length) return toast("Enter a quantity on at least one item", "err");
       const res = await api(`/api/jobs/${job.id}/items`, { method: "POST", body: { items, group_label: $("#mg", m.el).value || "Materials", status_bump: true } });
       m.close(); onSaved(res.job); toast(`${items.length} line${items.length > 1 ? "s" : ""} added`, "ok");
@@ -477,7 +497,7 @@
     let active = Object.keys(cats)[0], result = null, timer;
     if (!S.jobs.length) await loadJobs();
     const openJobs = S.jobs.filter((j) => !["complete", "lost"].includes(j.status));
-    main().innerHTML = head("Calculators", esc(S.pricing.region.name)) + `
+    main().innerHTML = head("Calculators", marketMetaLine(), `<button class="btn" id="market">${ICON.refresh} Update market prices</button>`) + `
       <div class="grid side-l">
         <div class="card pad-0" style="padding:8px"><div class="calc-list" id="clist"></div></div>
         <div>
@@ -486,6 +506,7 @@
         </div>
       </div>`;
     const list = $("#clist");
+    $("#market").onclick = (e) => refreshMarketPrices(e.currentTarget, () => { $("#main .page-head .sub").innerHTML = marketMetaLine(); run(); });
     const descs = { deck: "Full lumber + hardware takeoff", framing: "Studs, plates, headers, nails", drywall: "Board, mud, screws, finish", paint: "Walls, ceilings, trim, doors", trim: "Base, casing, crown, doors", hourly: "Any trade by the hour" };
     const drawList = () => {
       list.innerHTML = Object.entries(cats).map(([k, c]) => `<button class="${k === active ? "active" : ""}" data-k="${k}">${esc(c.label)}<small>${descs[k] || ""}</small></button>`).join("");
@@ -508,16 +529,47 @@
       const main_ = d.wall_sqft ? `${d.wall_sqft} sqft` : d.wall_lf ? `${d.wall_lf} lf` : d.baseboard_lf !== undefined ? `${d.baseboard_lf || 0} lf base, ${d.doors || 0} doors` : d.hours ? `${d.hours} hr ${titleCase(d.trade)}` : "";
       return `${c.label}${dims ? ` ${dims}` : main_ ? ` ${main_}` : ""}`;
     };
+    let sumTimer;
+    const drawTotals = () => { $("#ctot").innerHTML = totalsHtml(result.summary); $("#ccmp").innerHTML = competitorsHtml(result.competitors, result.summary.total); };
+    const resummarize = () => {
+      clearTimeout(sumTimer);
+      sumTimer = setTimeout(async () => {
+        try { const r = await api("/api/summarize", { method: "POST", body: { items: result.items } }); result.summary = r.summary; result.competitors = r.competitors; drawTotals(); } catch (_) { /* keep last */ }
+      }, 250);
+    };
     const run = async () => {
       try { result = await api(`/api/calc/${active}`, { method: "POST", body: formData($("#cform")) }); } catch (err) { $("#cres").innerHTML = `<div class="error">${esc(err.message)}</div>`; return; }
       $("#cres").innerHTML = `
         <div class="row between wrap mb"><div class="row wrap">${Object.entries(result.meta).map(([k, v]) => `<span class="meta-chip">${titleCase(k)} <b>${num(v)}</b></span>`).join("")}</div>
           <div class="row"><select id="jobsel" style="width:240px"><option value="">Add to job…</option><option value="__new">+ New job from this</option>${openJobs.map((j) => `<option value="${j.id}" ${String(j.id) === String(jobIdArg) ? "selected" : ""}>${esc(j.job_no)} · ${esc(j.title)}</option>`).join("")}</select>
             <button class="btn primary" id="addtojob">${ICON.plus} Add</button></div></div>
-        <div class="table-wrap"><table><thead><tr><th>Item</th><th>Type</th><th class="num">Qty</th><th>Unit</th><th class="num">Unit cost</th><th class="num">Total</th></tr></thead>
-          <tbody>${result.items.map((i) => `<tr><td>${esc(i.description)}</td><td><span class="cat ${i.category}">${i.category}</span></td><td class="num">${num(i.qty)}</td><td class="dim">${esc(i.unit)}</td><td class="num">${money2(i.unit_cost)}</td><td class="num">${money2(i.total)}</td></tr>`).join("")}</tbody></table></div>
-        <div class="grid c2 mt"><div>${totalsHtml(result.summary)}</div>
-          <div>${competitorsHtml(result.competitors, result.summary.total)}</div></div>`;
+        <div class="table-wrap"><table><thead><tr><th>Item</th><th>Type</th><th class="num">Qty</th><th>Unit</th><th class="num">Unit cost</th><th class="num">Total</th><th></th></tr></thead>
+          <tbody>${result.items.map((i, idx) => `<tr>
+            <td><input type="text" class="inline-text" data-desc="${idx}" value="${esc(i.description)}"></td><td><span class="cat ${i.category}">${i.category}</span></td>
+            <td class="num"><input class="inline-num" data-qty="${idx}" value="${i.qty}"></td><td class="dim">${esc(i.unit)}</td>
+            <td class="num"><input class="inline-num" data-uc="${idx}" value="${i.unit_cost}"></td><td class="num" data-tot="${idx}">${money2(i.total)}</td>
+            <td class="right">${i.price_key ? `<button class="btn ghost xs hidden" data-savepk="${idx}" title="Save this price to the price book">save price</button>` : ""}</td></tr>`).join("")}</tbody></table></div>
+        <div class="grid c2 mt"><div id="ctot">${totalsHtml(result.summary)}</div>
+          <div id="ccmp">${competitorsHtml(result.competitors, result.summary.total)}</div></div>`;
+      const edit = (idx, field, raw) => {
+        const it = result.items[idx];
+        if (field === "description") { it.description = raw; return; }
+        const v = parseFloat(raw); if (isNaN(v)) return;
+        it[field] = v; it.total = Math.round(it.qty * it.unit_cost * 100) / 100;
+        $(`[data-tot="${idx}"]`).textContent = money2(it.total);
+        if (field === "unit_cost") { const b = $(`[data-savepk="${idx}"]`); if (b) b.classList.toggle("hidden", v === it.book_cost); }
+        resummarize();
+      };
+      $$("[data-desc]").forEach((i) => (i.onchange = () => edit(+i.dataset.desc, "description", i.value)));
+      $$("[data-qty]").forEach((i) => (i.oninput = () => edit(+i.dataset.qty, "qty", i.value)));
+      $$("[data-uc]").forEach((i) => (i.oninput = () => edit(+i.dataset.uc, "unit_cost", i.value)));
+      $$("[data-savepk]").forEach((b) => (b.onclick = async () => {
+        const it = result.items[+b.dataset.savepk];
+        const field = it.price_key.startsWith("labor.") ? "rate" : "cost";
+        const merged = { ...(S.user.price_overrides || {}), [it.price_key]: { ...((S.user.price_overrides || {})[it.price_key] || {}), [field]: it.unit_cost } };
+        const { user } = await api("/api/settings", { method: "PUT", body: { price_overrides: merged } });
+        S.user = user; await loadPricing(); it.book_cost = it.unit_cost; b.classList.add("hidden"); toast("Saved to price book", "ok");
+      }));
       $("#addtojob").onclick = async () => {
         const v = $("#jobsel").value;
         if (!v) return toast("Pick a job first", "err");
@@ -630,8 +682,8 @@
     const overrides = { ...(S.user.price_overrides || {}) };
     const sections = { labor: "Billed labor rates ($ per man-hour, your margin included)", production: "Production rates (man-hours per unit of work)", job: "Job factors", conditions: "Site conditions (% added to labor)", competitors: "Competitor benchmarks (for the comparison card)", lumber: "Lumber", hardware: "Hardware & fasteners", drywall: "Drywall", trim: "Trim & doors", paint: "Paint", equipment: "Equipment & site protection", permits: "Permits (New Hanover County)", disposal: "Disposal", defaults: "Estimate defaults" };
     const mine = S.pricing.materials.filter((x) => !x.builtin);
-    main().innerHTML = head("Price book", esc(region.name),
-      `<button class="btn" id="addmat">${ICON.plus} Add material</button><button class="btn" id="reset">Reset built-ins</button><button class="btn primary" id="save">Save changes</button>`) + `
+    main().innerHTML = head("Price book", marketMetaLine(),
+      `<button class="btn" id="market">${ICON.refresh} Update market prices</button><button class="btn" id="addmat">${ICON.plus} Add material</button><button class="btn" id="reset">Reset built-ins</button><button class="btn primary" id="save">Save changes</button>`) + `
       <div class="card pad-0 mb"><div class="card-head" style="padding:14px 18px 0"><h3>My materials</h3></div>
         ${mine.length ? `<table><thead><tr><th>Item</th><th>Section</th><th>Unit</th><th class="num">Cost</th><th></th></tr></thead><tbody>${mine.map((x) => `<tr>
           <td><input type="text" data-mid="${x.db_id}" data-f="label" value="${esc(x.label)}"></td>
@@ -640,7 +692,7 @@
           <td class="num"><input class="price-input" type="number" step="any" data-mid="${x.db_id}" data-f="cost" value="${x.cost}"></td>
           <td class="right"><button class="btn ghost xs danger" data-delmat="${x.db_id}" title="Delete">${ICON.trash}</button></td></tr>`).join("")}</tbody></table>` : `<div class="empty">No custom materials yet. Click <b>Add material</b> to put in anything you buy regularly.</div>`}</div>
       <div class="grid c2">${Object.entries(sections).map(([sec, label]) => `
-        <div class="card pad-0"><div class="card-head" style="padding:14px 18px 0"><h3>${label}</h3></div>
+        <div class="card pad-0"><div class="card-head" style="padding:14px 18px 0"><h3>${label}</h3>${sec === "competitors" ? `<span class="dim" style="font-size:11px">${esc(S.pricing.benchmark_source)}</span>` : ""}${S.pricing.price_meta?.series?.[sec] ? `<span class="dim" style="font-size:11px">index: ${esc(S.pricing.price_meta.series[sec].label)} ${S.pricing.price_meta.series[sec].change_pct >= 0 ? "+" : ""}${S.pricing.price_meta.series[sec].change_pct}%</span>` : ""}</div>
           <table><tbody>${Object.entries(book[sec]).map(([key, v]) => {
             const fields = Object.keys(v).filter((k) => k !== "label");
             return `<tr><td>${esc(v.label)}${v.unit ? ` <span class="dim">/ ${esc(v.unit)}</span>` : ""}</td>
@@ -655,6 +707,7 @@
       S.user = user; await loadPricing(); toast("Price book saved", "ok"); render();
     };
     $("#addmat").onclick = () => materialModal();
+    $("#market").onclick = (e) => refreshMarketPrices(e.currentTarget, () => render());
     const saveMat = async (id, body) => { const row = mine.find((x) => x.db_id === +id); await api(`/api/materials/${id}`, { method: "PUT", body: { ...row, ...body } }); Object.assign(row, body); toast("Material saved", "ok"); };
     $$("[data-mid]").forEach((i) => (i.onchange = () => saveMat(i.dataset.mid, { [i.dataset.f]: i.value })));
     $$("[data-delmat]").forEach((b) => (b.onclick = async () => { if (!(await confirmDlg("Delete this material from your price book?"))) return; await api(`/api/materials/${b.dataset.delmat}`, { method: "DELETE" }); await loadPricing(); render(); }));

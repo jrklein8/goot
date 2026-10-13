@@ -40,6 +40,7 @@ app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
                   PERMANENT_SESSION_LIFETIME=timedelta(days=14))
 
 JOB_STATUSES = ["lead", "estimating", "quoted", "approved", "in_progress", "complete", "lost"]
+UNLOCKED_STATUSES = ("lead", "estimating")   # prices follow the price book; everything else is frozen
 EVENT_TYPES = ["site_visit", "work", "inspection", "delivery", "meeting", "other"]
 
 # ------------------------------------------------------------------ database
@@ -49,7 +50,7 @@ CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
   name TEXT, business_name TEXT, phone TEXT, license_no TEXT, address TEXT,
   markup_pct REAL DEFAULT 20, contingency_pct REAL DEFAULT 5, tax_pct REAL DEFAULT 7.0,
-  price_overrides TEXT DEFAULT '{}', ics_token TEXT UNIQUE, created_at TEXT
+  price_overrides TEXT DEFAULT '{}', price_meta TEXT DEFAULT '{}', ics_token TEXT UNIQUE, created_at TEXT
 );
 CREATE TABLE IF NOT EXISTS jobs (
   id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, job_no TEXT,
@@ -62,7 +63,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 CREATE TABLE IF NOT EXISTS line_items (
   id INTEGER PRIMARY KEY, job_id INTEGER NOT NULL, source TEXT, group_label TEXT,
   description TEXT NOT NULL, category TEXT NOT NULL, qty REAL, unit TEXT,
-  unit_cost REAL, total REAL, sort_order INTEGER DEFAULT 0, created_at TEXT
+  unit_cost REAL, total REAL, price_key TEXT, sort_order INTEGER DEFAULT 0, created_at TEXT
 );
 CREATE TABLE IF NOT EXISTS materials (
   id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL, section TEXT, label TEXT NOT NULL,
@@ -100,9 +101,10 @@ def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.executescript(SCHEMA)
-    for col, ddl in (("conditions", "TEXT DEFAULT '[]'"), ("trips", "INTEGER DEFAULT 0")):
-        if col not in [r[1] for r in conn.execute("PRAGMA table_info(jobs)")]:
-            conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} {ddl}")
+    for table, col, ddl in (("jobs", "conditions", "TEXT DEFAULT '[]'"), ("jobs", "trips", "INTEGER DEFAULT 0"),
+                            ("users", "price_meta", "TEXT DEFAULT '{}'"), ("line_items", "price_key", "TEXT")):
+        if col not in [r[1] for r in conn.execute(f"PRAGMA table_info({table})")]:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {col} {ddl}")
     conn.commit()
     if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
         seed_demo(conn)
@@ -128,6 +130,35 @@ def user_json(u):
     return {k: u[k] for k in ("id", "email", "name", "business_name", "phone", "license_no", "address",
                               "markup_pct", "contingency_pct", "tax_pct", "ics_token")} | \
            {"price_overrides": json.loads(u["price_overrides"] or "{}")}
+
+
+def price_meta_for(u):
+    try:
+        return json.loads(u["price_meta"] or "{}")
+    except (json.JSONDecodeError, TypeError):
+        return {}
+
+
+def reprice_unlocked(uid):
+    """Re-point every line item with a price_key on lead/estimating jobs at today's price."""
+    u = db().execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
+    book = pricing.merged_prices(overrides_for(u))
+    customs = {str(r["id"]): r["cost"] for r in db().execute("SELECT id, cost FROM materials WHERE user_id=?", (uid,))}
+    rows = db().execute(
+        """SELECT li.id, li.job_id, li.qty, li.unit_cost, li.price_key FROM line_items li JOIN jobs j ON j.id=li.job_id
+           WHERE j.user_id=? AND j.status IN (?,?) AND li.price_key IS NOT NULL""", (uid, *UNLOCKED_STATUSES)).fetchall()
+    items, jobs = 0, set()
+    for r in rows:
+        price = pricing.current_unit_price(book, r["price_key"], lambda k: customs.get(k))
+        if price is None or abs(price - (r["unit_cost"] or 0)) < 0.005:
+            continue
+        db().execute("UPDATE line_items SET unit_cost=?, total=? WHERE id=?", (price, round((r["qty"] or 0) * price, 2), r["id"]))
+        items += 1
+        jobs.add(r["job_id"])
+    for jid in jobs:
+        db().execute("UPDATE jobs SET updated_at=? WHERE id=?", (now(), jid))
+    db().commit()
+    return items, len(jobs)
 
 
 def overrides_for(u):
@@ -221,6 +252,8 @@ def update_settings():
         sets = ", ".join(f"{k}=?" for k in fields)
         db().execute(f"UPDATE users SET {sets} WHERE id=?", (*fields.values(), u["id"]))
         db().commit()
+    if "price_overrides" in fields:
+        reprice_unlocked(u["id"])
     return jsonify(user=user_json(current_user()))
 
 
@@ -239,8 +272,43 @@ def get_pricing():
     book = pricing.merged_prices(overrides_for(u))
     return jsonify(region=pricing.REGION, book=book, calculators=pricing.calculator_catalog(),
                    materials=pricing.material_catalog(book) + custom_materials(u["id"]),
-                   conditions=pricing.conditions_catalog(book),
+                   conditions=pricing.conditions_catalog(book), price_meta=price_meta_for(u),
+                   benchmark_source=pricing.BENCHMARK_SOURCE,
                    statuses=JOB_STATUSES, event_types=EVENT_TYPES)
+
+
+@app.post("/api/prices/refresh")
+@login_required
+def refresh_prices():
+    u = current_user()
+    try:
+        overrides, meta, report = pricing.market_refresh(overrides_for(u), price_meta_for(u))
+    except Exception as e:  # network, FRED down, parse
+        return jsonify(error=f"Couldn't reach the price index: {e}"), 502
+    db().execute("UPDATE users SET price_overrides=?, price_meta=? WHERE id=?", (json.dumps(overrides), json.dumps(meta), u["id"]))
+    db().commit()
+    items, jobs = reprice_unlocked(u["id"])
+    return jsonify(sections=report, latest_month=meta.get("latest_month"), updated=meta["updated"],
+                   repriced_items=items, repriced_jobs=jobs)
+
+
+@app.post("/api/summarize")
+@login_required
+def summarize_items():
+    """Totals + competitor bands for an arbitrary (edited) item list at the user's defaults."""
+    u = current_user()
+    d = request.get_json(force=True) or {}
+    items = []
+    for it in d.get("items") or []:
+        try:
+            qty, uc = float(it.get("qty") or 0), float(it.get("unit_cost") or 0)
+        except (TypeError, ValueError):
+            continue
+        items.append({"description": it.get("description", ""), "category": it.get("category", "other"), "qty": qty,
+                      "unit": it.get("unit", "ea"), "unit_cost": uc, "total": round(qty * uc, 2)})
+    book = pricing.merged_prices(overrides_for(u))
+    summary = pricing.summarize(items, book, u["markup_pct"], u["contingency_pct"], u["tax_pct"])
+    return jsonify(summary=summary, competitors=pricing.competitor_quotes(items, book, summary))
 
 
 # ------------------------------------------------------------------ custom materials
@@ -286,6 +354,7 @@ def update_material(mid):
     db().execute("UPDATE materials SET section=?, label=?, unit=?, cost=?, category=? WHERE id=?",
                  (f["section"], f["label"], f["unit"], f["cost"], f["category"], mid))
     db().commit()
+    reprice_unlocked(u["id"])
     return jsonify(materials=custom_materials(u["id"]))
 
 
@@ -326,6 +395,7 @@ def job_row_json(j, u, with_items=False):
     except (json.JSONDecodeError, TypeError):
         conds = []
     out["conditions"] = conds
+    out["locked"] = j["status"] not in UNLOCKED_STATUSES
     book = pricing.merged_prices(overrides_for(u))
     out["summary"] = pricing.summarize(items, book, mk, ct, tx, conds, j["trips"] or 0)
     out["item_count"] = len(items)
@@ -445,10 +515,10 @@ def add_items(job_id):
         uc = float(it.get("unit_cost") or 0)
         cat = it.get("category") if it.get("category") in ("material", "labor", "permit", "equipment", "disposal", "other") else "other"
         db().execute(
-            """INSERT INTO line_items (job_id,source,group_label,description,category,qty,unit,unit_cost,total,sort_order,created_at)
-               VALUES (?,?,?,?,?,?,?,?,?,?,?)""",
+            """INSERT INTO line_items (job_id,source,group_label,description,category,qty,unit,unit_cost,total,price_key,sort_order,created_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
             (job_id, it.get("source", "custom"), it.get("group_label", group), it["description"], cat, qty,
-             it.get("unit", "ea"), uc, round(qty * uc, 2), maxo + i, now()))
+             it.get("unit", "ea"), uc, round(qty * uc, 2), it.get("price_key") or None, maxo + i, now()))
     db().execute("UPDATE jobs SET updated_at=? WHERE id=?", (now(), job_id))
     if d.get("status_bump") and db().execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()[0] == "lead":
         db().execute("UPDATE jobs SET status='estimating' WHERE id=?", (job_id,))
@@ -467,6 +537,9 @@ def update_item(job_id, item_id):
         abort(404)
     qty = float(d.get("qty", it["qty"]) or 0)
     uc = float(d.get("unit_cost", it["unit_cost"]) or 0)
+    job = db().execute("SELECT status FROM jobs WHERE id=?", (job_id,)).fetchone()
+    if job["status"] not in UNLOCKED_STATUSES and abs(uc - (it["unit_cost"] or 0)) > 0.004:
+        return jsonify(error="Prices are locked once a job is quoted. Set it back to Estimating to change unit costs."), 409
     db().execute("UPDATE line_items SET description=?, category=?, qty=?, unit=?, unit_cost=?, total=? WHERE id=?",
                  (d.get("description", it["description"]), d.get("category", it["category"]), qty,
                   d.get("unit", it["unit"]), uc, round(qty * uc, 2), item_id))
@@ -669,15 +742,15 @@ def seed_demo(conn):
     def add_mat(job_id, sec, key, qty, label, group):
         it = pricing._mat(book, sec, key, qty)
         conn.execute(
-            "INSERT INTO line_items (job_id,source,group_label,description,category,qty,unit,unit_cost,total,sort_order,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-            (job_id, "pricebook", group, label or it["description"], it["category"], it["qty"], it["unit"], it["unit_cost"], it["total"], 50, now()))
+            "INSERT INTO line_items (job_id,source,group_label,description,category,qty,unit,unit_cost,total,price_key,sort_order,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+            (job_id, "pricebook", group, label or it["description"], it["category"], it["qty"], it["unit"], it["unit_cost"], it["total"], it.get("price_key"), 50, now()))
 
     def add_calc(job_id, name, params, label):
         res = pricing.run_calculator(name, params)
         for i, it in enumerate(res["items"], 1):
             conn.execute(
-                "INSERT INTO line_items (job_id,source,group_label,description,category,qty,unit,unit_cost,total,sort_order,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                (job_id, name, label, it["description"], it["category"], it["qty"], it["unit"], it["unit_cost"], it["total"], i, now()))
+                "INSERT INTO line_items (job_id,source,group_label,description,category,qty,unit,unit_cost,total,price_key,sort_order,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (job_id, name, label, it["description"], it["category"], it["qty"], it["unit"], it["unit_cost"], it["total"], it.get("price_key"), i, now()))
 
     j0 = job("Close in half hall + add door", "Justin K.", "(910) 555-0120", "Wilmington, NC 28405",
              "Interior", "quoted",

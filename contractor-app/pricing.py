@@ -23,8 +23,12 @@ category is one of: material, labor, permit, equipment, disposal, other
 Labor items always have unit "hr" so hours can be rolled up.
 """
 
+import csv
+import io
 import math
+import urllib.request
 from copy import deepcopy
+from datetime import datetime
 
 REGION = {
     "name": "Wilmington, NC (New Hanover County)",
@@ -37,9 +41,82 @@ REGION = {
         "Decks need a building permit (New Hanover County via COAST, or City of Wilmington). Non-structural interior partition walls usually don't, but any electrical does.",
         "Garage walls shared with living space need 5/8 in Type X drywall.",
         "NC requires a General Contractor license for any job over $40,000.",
-        "Local billed rates (2026): handyman $40-55/hr, small licensed contractor $60-80/hr, established remodeler $90-120/hr.",
+        "Local billed rates (2026): handyman $50-85/hr, small licensed contractor $50-85/hr, established remodeler $95-120/hr.",
     ],
 }
+
+BENCHMARK_SOURCE = ("Wilmington, NC: handyman $50-85/hr and $75-150 minimum (Handsome the Handyman cost guide, Feb 2026); "
+                    "general contractor $30-85/hr, avg $50 (Thumbtack Wilmington, 2026); carpenter median wage $23.24/hr "
+                    "(BLS Wilmington MSA). Established-remodeler figure is the national $100-150 range scaled down for Wilmington.")
+
+# Live market index: BLS Producer Price Index series on FRED. Price book base values are
+# taken as of MARKET_BASELINE; a refresh scales each section by latest / baseline.
+MARKET_BASELINE = "2026-06-01"
+MARKET_INDEX = {
+    "lumber":   {"series": "WPU0811", "label": "PPI softwood lumber", "skip": ("composite_deck_lf", "composite_rail_section", "composite_post_sleeve")},
+    "hardware": {"series": "WPU1081", "label": "PPI bolts, nuts, screws", "skip": ("concrete_bag_80", "door_lever_set", "construction_adhesive")},
+    "drywall":  {"series": "WPU1371", "label": "PPI gypsum products", "skip": ()},
+    "paint":    {"series": "WPU062",  "label": "PPI paints", "skip": ("coverage_sqft_gal", "sundries_pct")},
+    "trim":     {"series": "WPU0821", "label": "PPI general millwork", "skip": ()},
+}
+
+
+def _fred_series(series_id, timeout=15):
+    url = f"https://fred.stlouisfed.org/graph/fredgraph.csv?id={series_id}"
+    raw = urllib.request.urlopen(url, timeout=timeout).read().decode("utf-8")
+    rows = [r for r in csv.DictReader(io.StringIO(raw)) if r.get(series_id) not in (None, "", ".")]
+    return [(r["observation_date"], float(r[series_id])) for r in rows]
+
+
+def market_refresh(overrides, meta):
+    """Fetch the indexes and return (new_overrides, new_meta, section_report).
+    Keys the user changed by hand since the last refresh are left alone; keys the last refresh set
+    (still equal to the value it wrote) are re-scaled from the base price book."""
+    overrides = deepcopy(overrides or {})
+    applied_before = (meta or {}).get("applied", {})
+    new_meta = {"updated": datetime.now().isoformat(timespec="seconds"), "baseline": MARKET_BASELINE, "series": {}, "applied": {}}
+    report = []
+    latest_month = None
+    for sec, cfg in MARKET_INDEX.items():
+        obs = _fred_series(cfg["series"])
+        base = next((v for d, v in obs if d >= MARKET_BASELINE), None)
+        if base is None or not obs:
+            continue
+        latest_date, latest = obs[-1]
+        factor = latest / base
+        change_pct = round((factor - 1) * 100, 1)
+        latest_month = max(latest_month or "", latest_date)
+        new_meta["series"][sec] = {"id": cfg["series"], "label": cfg["label"], "baseline_value": base,
+                                  "latest_value": latest, "latest_date": latest_date, "factor": round(factor, 4), "change_pct": change_pct}
+        changed = 0
+        for key, v in PRICE_BOOK[sec].items():
+            if key in cfg["skip"] or "cost" not in v:
+                continue
+            path = f"{sec}.{key}"
+            current = (overrides.get(path) or {}).get("cost")
+            manual = current is not None and abs(current - applied_before.get(path, -1)) > 0.004
+            if manual:
+                continue
+            new_cost = round(v["cost"] * factor, 2)
+            overrides[path] = {**(overrides.get(path) or {}), "cost": new_cost}
+            new_meta["applied"][path] = new_cost
+            changed += 1
+        report.append({"section": sec, "label": cfg["label"], "change_pct": change_pct, "keys": changed})
+    new_meta["latest_month"] = datetime.strptime(latest_month, "%Y-%m-%d").strftime("%b %Y") if latest_month else None
+    return overrides, new_meta, report
+
+
+def current_unit_price(book, price_key, custom_lookup=None):
+    """Resolve a line item's price_key to today's unit price, or None if unknown."""
+    if not price_key:
+        return None
+    sec, _, key = price_key.partition(".")
+    if sec == "custom":
+        return custom_lookup(key) if custom_lookup else None
+    v = (book.get(sec) or {}).get(key)
+    if not v:
+        return None
+    return v.get("rate") if sec == "labor" else v.get("cost")
 
 PRICE_BOOK = {
     "labor": {
@@ -102,12 +179,13 @@ PRICE_BOOK = {
         "match_existing":    {"pct": 8.0,  "label": "Match existing texture / trim profile"},
     },
     "competitors": {
-        # typical Wilmington billing, used only for the "what others would quote" card
-        "handyman_rate":     {"cost": 45.0, "label": "Handyman (unlicensed) $/hr"},
+        # Wilmington, NC figures (see BENCHMARK_SOURCE), used only for the "what others would quote" card
+        "handyman_rate":     {"cost": 62.0, "label": "Handyman $/hr (Wilmington: $50-85)"},
         "handyman_markup":   {"cost": 10.0, "label": "Handyman material markup %"},
-        "small_rate":        {"cost": 68.0, "label": "Small licensed contractor $/hr"},
+        "handyman_minimum":  {"cost": 100.0, "label": "Handyman minimum charge (Wilmington: $75-150)"},
+        "small_rate":        {"cost": 70.0, "label": "Small licensed contractor $/hr (Wilmington GC: $50-85)"},
         "small_markup":      {"cost": 20.0, "label": "Small contractor material markup %"},
-        "established_rate":  {"cost": 98.0, "label": "Established remodeler $/hr"},
+        "established_rate":  {"cost": 105.0, "label": "Established remodeler $/hr"},
         "established_markup":{"cost": 35.0, "label": "Established remodeler material markup %"},
         "established_minimum": {"cost": 1500.0, "label": "Established remodeler minimum job"},
     },
@@ -253,13 +331,19 @@ def _f(d, k, default=0.0):
 
 def _mat(book, sec, key, qty, label=None):
     v = book[sec][key]
-    return _li(label or v["label"], CATEGORY_FOR_SECTION.get(sec, "material"), qty, v.get("unit", "ea"), v["cost"])
+    it = _li(label or v["label"], CATEGORY_FOR_SECTION.get(sec, "material"), qty, v.get("unit", "ea"), v["cost"])
+    it["price_key"] = f"{sec}.{key}"
+    it["book_cost"] = v["cost"]
+    return it
 
 
 def _hr(book, trade, hours, label):
     """Labor line: hours x billed rate for the trade."""
     rate = book["labor"][trade]["rate"]
-    return _li(f"{label} ({book['labor'][trade]['label']})", "labor", round(hours, 1), "hr", rate)
+    it = _li(f"{label} ({book['labor'][trade]['label']})", "labor", round(hours, 1), "hr", rate)
+    it["price_key"] = f"labor.{trade}"
+    it["book_cost"] = rate
+    return it
 
 
 def _p(book, key):
@@ -655,7 +739,7 @@ def competitor_quotes(items, book, summary):
     trips_cost = summary["trips_cost"]
     bands = []
     for key, name, blurb, min_job, trips_mult in (
-        ("handyman", "Handyman", "Unlicensed, cash-friendly, no permits, often no insurance. Cheapest, slowest, most risk for the client.", 150.0, 0.0),
+        ("handyman", "Handyman", "Unlicensed, cash-friendly, no permits, often no insurance. Cheapest, slowest, most risk for the client.", c["handyman_minimum"]["cost"], 0.0),
         ("small", "Small licensed contractor", "Where he competes. Licensed + insured, pulls permits, 1-2 person crew.", book["job"]["minimum_job"]["cost"], 1.0),
         ("established", "Established remodeler", "Showroom, project manager, design fee. Pays for overhead you don't have.", c["established_minimum"]["cost"], 1.5),
     ):
