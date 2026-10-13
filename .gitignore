@@ -1,0 +1,8 @@
+# PyInstaller build output (rebuild with the command in word_activity/README.md)
+dist/
+build/
+__pycache__/
+*.pyc
+
+# Claude Code local state
+.claude/worktrees/
