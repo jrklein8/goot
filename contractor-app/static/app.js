@@ -236,9 +236,10 @@
   }
 
   async function pageJobs() {
-    let filter = "all", q = "";
+    let filter = "all", q = "", hideDone = true;
+    try { hideDone = localStorage.getItem("hideDone") !== "0"; } catch (_) { /* ignore */ }
     main().innerHTML = head("Jobs", "", `<button class="btn primary" id="newjob">${ICON.plus} New job</button>`) + `
-      <div class="row between wrap mb"><div class="chips" id="chips"></div><input type="text" id="q" placeholder="Search client, address, job…" style="max-width:280px"></div>
+      <div class="row between wrap mb"><div class="chips" id="chips"></div><div class="row"><label class="check" style="padding:0"><input type="checkbox" id="hidedone"> Hide completed / lost</label><input type="text" id="q" placeholder="Search client, address, job…" style="max-width:280px"></div></div>
       <div class="card pad-0" id="list"><div class="empty">Loading…</div></div>`;
     $("#newjob").onclick = () => jobModal();
     await loadJobs();
@@ -248,11 +249,13 @@
       $("#chips").innerHTML = ["all", ...S.pricing.statuses].filter((s) => s === "all" || counts[s]).map((s) =>
         `<button class="chip ${filter === s ? "active" : ""}" data-f="${s}">${s === "all" ? "All" : STATUS_LABEL[s]} <span class="dim">${counts[s] || 0}</span></button>`).join("");
       $$("#chips .chip").forEach((c) => (c.onclick = () => { filter = c.dataset.f; draw(); }));
-      const rows = S.jobs.filter((j) => (filter === "all" || j.status === filter) && (!q || `${j.title} ${j.client_name} ${j.address} ${j.job_no} ${j.job_type}`.toLowerCase().includes(q)));
+      const rows = S.jobs.filter((j) => (filter === "all" ? !(hideDone && ["complete", "lost"].includes(j.status)) : j.status === filter) && (!q || `${j.title} ${j.client_name} ${j.address} ${j.job_no} ${j.job_type}`.toLowerCase().includes(q)));
       $("#list").innerHTML = jobsTable(rows, { withStatus: true });
       wireJobRows();
     };
     $("#q").oninput = (e) => { q = e.target.value.toLowerCase(); draw(); };
+    $("#hidedone").checked = hideDone;
+    $("#hidedone").onchange = (e) => { hideDone = e.target.checked; try { localStorage.setItem("hideDone", hideDone ? "1" : "0"); } catch (_) { /* ignore */ } draw(); };
     draw();
   }
 
