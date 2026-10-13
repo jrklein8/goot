@@ -108,7 +108,8 @@ def market_refresh(overrides, meta):
             overrides[path] = {**(overrides.get(path) or {}), "cost": new_cost}
             new_meta["applied"][path] = new_cost
             changed += 1
-        report.append({"section": sec, "label": cfg["label"], "change_pct": change_pct, "keys": changed})
+        report.append({"section": sec, "label": cfg["label"], "change_pct": change_pct, "keys": changed,
+                       "since_last_pct": round((since_last - 1) * 100, 1), "latest_date": latest_date})
     new_meta["latest_month"] = datetime.strptime(latest_month, "%Y-%m-%d").strftime("%b %Y") if latest_month else None
     return overrides, new_meta, report
 

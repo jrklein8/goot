@@ -321,8 +321,12 @@
     try {
       const r = await api("/api/prices/refresh", { method: "POST" });
       await loadPricing();
-      const moves = r.sections.map((x) => `${x.label} ${x.change_pct >= 0 ? "+" : ""}${x.change_pct}%`).join(", ");
-      toast(`Prices updated (${r.latest_month}): ${moves}. ${r.repriced_items} line${r.repriced_items === 1 ? "" : "s"} on ${r.repriced_jobs} open estimate${r.repriced_jobs === 1 ? "" : "s"} repriced.`, "ok");
+      const moved = r.sections.filter((x) => Math.abs(x.since_last_pct) >= 0.05);
+      if (!moved.length && r.repriced_items === 0) toast(`Already current with the ${r.latest_month} index data. New data posts around the middle of each month.`, "ok");
+      else {
+        const moves = r.sections.map((x) => `${x.label.replace("PPI ", "")} ${x.change_pct >= 0 ? "+" : ""}${x.change_pct}%`).join(", ");
+        toast(`Prices updated (${r.latest_month}): ${moves}. ${r.repriced_items} line${r.repriced_items === 1 ? "" : "s"} on ${r.repriced_jobs} open estimate${r.repriced_jobs === 1 ? "" : "s"} repriced.`, "ok");
+      }
       if (after) after();
     } catch (err) { toast(err.message, "err"); }
     finally { if (btn) { btn.disabled = false; btn.innerHTML = `${ICON.refresh} Update market prices`; } }
@@ -762,8 +766,10 @@
           const [sec, key] = id.split(".");
           const baseUnit = S.pricing.book[sec]?.[key]?.base_unit;
           if (field === "unit" && baseUnit === "lf" && val !== "lf") {
-            const ft = await askNumber("Feet per piece", "So the calculators can turn footage into pieces.", S.pricing.book[sec][key].piece_ft || 8);
-            if (ft) { extra.piece_ft = ft; suffix = ` (${ft} ft)`; }
+            const ft = await askNumber("Feet per piece", "The price will be converted to per piece, and the calculators will count pieces.", S.pricing.book[sec][key].piece_ft || 8);
+            if (ft) { extra.piece_ft = ft; suffix = ` (${ft} ft)`; if (S.pricing.book[sec][key].unit === "lf") extra.cost = Math.round(S.pricing.book[sec][key].cost * ft * 100) / 100; }
+          } else if (field === "unit" && baseUnit === "lf" && val === "lf" && S.pricing.book[sec][key].unit !== "lf") {
+            extra.cost = Math.round(S.pricing.book[sec][key].cost / (S.pricing.book[sec][key].piece_ft || 8) * 100) / 100;
           }
           const merged = { ...(S.user.price_overrides || {}), [id]: { ...((S.user.price_overrides || {})[id] || {}), [field]: val, ...extra } };
           const { user } = await api("/api/settings", { method: "PUT", body: { price_overrides: merged } });
@@ -773,6 +779,7 @@
         el.textContent = display(val) + suffix;
         if (onDone) onDone();
         toast(field === "unit" ? "Unit changed" : "Renamed", "ok");
+        if (field === "unit") render();
       };
       inp.onkeydown = (e) => { if (e.key === "Enter") finish(true); if (e.key === "Escape") finish(false); };
       inp.onblur = () => finish(true);
