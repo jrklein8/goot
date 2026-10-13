@@ -269,6 +269,8 @@ select.status-select { width: auto; padding: 4px 26px 4px 8px; font-size: 12px; 
 .code { font-family: var(--mono); font-size: 12px; background: var(--bg-2); border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; word-break: break-all; color: var(--text-2); }
 input.price-input { width: 96px; text-align: right; font-family: var(--mono); padding: 4px 6px; font-size: 12.5px; }
 td.star-cell { width: 28px; padding-right: 0; }
+td.editable { cursor: text; }
+td.editable:hover { color: var(--accent-2); }
 td.right select { display: inline-block; vertical-align: middle; }
 .price-input.changed { border-color: var(--accent); color: var(--accent); }
 td.right { white-space: nowrap; }
