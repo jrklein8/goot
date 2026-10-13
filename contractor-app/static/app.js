@@ -697,8 +697,8 @@
       <div class="grid c2">${Object.entries(sections).map(([sec, label]) => `
         <div class="card pad-0"><div class="card-head" style="padding:14px 18px 0"><h3>${label}</h3>${S.pricing.price_meta?.series?.[sec] ? `<span class="dim" style="font-size:11px">market ${S.pricing.price_meta.series[sec].change_pct >= 0 ? "up" : "down"} ${Math.abs(S.pricing.price_meta.series[sec].change_pct)}% since June</span>` : ""}</div>
           <table><tbody>${Object.entries(book[sec]).map(([key, v]) => {
-            const fields = Object.keys(v).filter((k) => k !== "label");
-            return `<tr><td>${esc(v.label)}${v.unit ? ` <span class="dim">/ ${esc(v.unit)}</span>` : ""}</td>
+            const fields = Object.keys(v).filter((k) => k !== "label" && k !== "unit");
+            return `<tr><td>${esc(v.label)}</td>
               <td class="right">${fields.map((f) => `<span class="dim" style="font-size:11px;margin-left:8px">${fields.length > 1 ? f : ""}</span> <input class="price-input ${overrides[`${sec}.${key}`]?.[f] !== undefined ? "changed" : ""}" type="number" step="any" data-path="${sec}.${key}" data-f="${f}" value="${v[f]}">`).join("")}</td></tr>`; }).join("")}
           </tbody></table></div>`).join("")}</div>`;
     const dirty = {};
