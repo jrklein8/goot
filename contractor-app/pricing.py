@@ -304,7 +304,9 @@ def merged_prices(overrides=None):
             section, key = path.split(".", 1)
             if section in book and key in book[section] and isinstance(vals, dict):
                 for k, v in vals.items():
-                    if k == "label" and str(v).strip():
+                    if k == "hidden":
+                        book[section][key]["hidden"] = bool(v)
+                    elif k == "label" and str(v).strip():
                         book[section][key]["label"] = str(v).strip()[:120]
                     elif k == "unit" and "unit" in book[section][key] and str(v).strip():
                         book[section][key]["unit"] = str(v).strip()[:12]
@@ -320,7 +322,7 @@ def material_catalog(book):
     out = []
     for sec in MATERIAL_SECTIONS:
         for key, v in book[sec].items():
-            if "unit" in v:
+            if "unit" in v and not v.get("hidden"):
                 out.append({"id": f"{sec}.{key}", "section": SECTION_LABELS[sec], "section_key": sec, "label": v["label"],
                             "unit": v["unit"], "cost": v["cost"], "category": CATEGORY_FOR_SECTION.get(sec, "material"), "builtin": True})
     return out

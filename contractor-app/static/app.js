@@ -705,28 +705,29 @@
     const sections = { labor: "Labor rates ($ per hour, what the client is charged)", production: "Production rates (man-hours per unit of work)", job: "Job factors", conditions: "Site conditions (% added to labor)", competitors: "Competitor benchmarks (for the comparison card)", lumber: "Lumber", hardware: "Hardware & fasteners", drywall: "Drywall", trim: "Trim & doors", paint: "Paint", equipment: "Equipment & site protection", permits: "Permits (New Hanover County)", disposal: "Disposal", defaults: "Estimate defaults" };
     const mine = S.pricing.materials.filter((x) => !x.builtin);
     const loose = mine.filter((x) => !x.section_key);
-    const favs = S.pricing.materials.filter((x) => isFav(x.id));
+    const favs = S.pricing.materials.filter((x) => isFav(x.id) && !(overrides[x.id] && overrides[x.id].hidden));
     const customRow = (x) => `<tr>
           <td class="star-cell">${starHtml(x.id)}</td>
           <td><span class="editable" data-clabel="${x.db_id}" title="Double-click to rename">${esc(x.label)}</span> <span class="mover" data-move="${x.db_id}"><button class="btn ghost xs" title="Move to another section">${ICON.move}</button></span></td>
           <td class="right"><input class="price-input" type="number" step="any" data-mid="${x.db_id}" data-f="cost" value="${x.cost}"> <span class="dim editable" style="font-size:11px" data-cunit="${x.db_id}" title="Double-click to change the unit">/ ${esc(x.unit)}</span>
             <button class="btn ghost xs danger hidden" data-delmat="${x.db_id}" title="Delete">${ICON.trash}</button></td></tr>`;
     const builtinRow = (x) => { const [sec, key] = x.id.split("."); const o = overrides[x.id]?.cost;
-      return `<tr><td class="star-cell">${starHtml(x.id)}</td><td class="editable" data-label="${x.id}" title="Double-click to rename">${esc(x.label)}</td><td class="right"><input class="price-input ${o !== undefined ? "changed" : ""}" type="number" step="any" data-path="${x.id}" data-f="cost" value="${x.cost}"> <span class="dim editable" style="font-size:11px" data-unit="${x.id}" title="Double-click to change the unit">/ ${esc(x.unit)}</span></td></tr>`; };
+      return `<tr><td class="star-cell">${starHtml(x.id)}</td><td class="editable" data-label="${x.id}" title="Double-click to rename">${esc(x.label)}</td><td class="right"><input class="price-input ${o !== undefined ? "changed" : ""}" type="number" step="any" data-path="${x.id}" data-f="cost" value="${x.cost}"> <span class="dim editable" style="font-size:11px" data-unit="${x.id}" title="Double-click to change the unit">/ ${esc(x.unit)}</span> <button class="btn ghost xs danger hidden" data-hide="${x.id}" title="Remove from price book">${ICON.trash}</button></td></tr>`; };
+    const hiddenIds = Object.entries(overrides).filter(([, v]) => v && v.hidden).map(([k]) => k);
     main().innerHTML = head("Price book", marketMetaLine(),
-      `<button class="btn" id="market">${ICON.refresh} Update market prices</button><button class="btn" id="addmat">${ICON.plus} Add material</button><button class="btn" id="reset">Reset built-ins</button><button class="btn primary" id="save">Save changes</button>`) + `
+      `${hiddenIds.length ? `<button class="btn ghost" id="showhidden">Hidden (${hiddenIds.length})</button>` : ""}<button class="btn" id="market">${ICON.refresh} Update market prices</button><button class="btn" id="addmat">${ICON.plus} Add material</button><button class="btn" id="reset">Reset built-ins</button><button class="btn primary" id="save">Save changes</button>`) + `
       <div class="card pad-0 mb"><div class="card-head" style="padding:14px 18px 0"><h3>★ Favorites</h3></div>
         ${favs.length ? `<table><tbody>${favs.map((x) => x.builtin ? builtinRow(x) : customRow(x)).join("")}</tbody></table>` : `<div class="empty">Star any material below to pin it here and to the top of the job picker.</div>`}</div>
       ${loose.length ? `<div class="card pad-0 mb"><div class="card-head" style="padding:14px 18px 0"><h3>My materials (misc)</h3></div>
         <table><tbody>${loose.map(customRow).join("")}</tbody></table></div>` : ""}
       <div class="grid c2">${Object.entries(sections).map(([sec, label]) => `
         <div class="card pad-0"><div class="card-head" style="padding:14px 18px 0"><h3>${label}</h3>${S.pricing.price_meta?.series?.[sec] ? `<span class="dim" style="font-size:11px">market ${S.pricing.price_meta.series[sec].change_pct >= 0 ? "up" : "down"} ${Math.abs(S.pricing.price_meta.series[sec].change_pct)}% since June</span>` : ""}</div>
-          <table><tbody>${Object.entries(book[sec]).map(([key, v]) => {
-            const fields = Object.keys(v).filter((k) => k !== "label" && k !== "unit");
+          <table><tbody>${Object.entries(book[sec]).filter(([, v]) => !v.hidden).map(([key, v]) => {
+            const fields = Object.keys(v).filter((k) => k !== "label" && k !== "unit" && k !== "hidden");
             const id = `${sec}.${key}`;
             const starCell = Object.values(book[sec]).some((b) => "unit" in b) ? `<td class="star-cell">${"unit" in v ? starHtml(id) : ""}</td>` : "";
             return `<tr>${starCell}<td class="editable" data-label="${id}" title="Double-click to rename">${esc(v.label)}</td>
-              <td class="right">${fields.map((f) => `<span class="dim" style="font-size:11px;margin-left:8px">${fields.length > 1 ? f : ""}</span> <input class="price-input ${overrides[id]?.[f] !== undefined ? "changed" : ""}" type="number" step="any" data-path="${id}" data-f="${f}" value="${v[f]}">`).join("")}${"unit" in v ? ` <span class="dim editable" style="font-size:11px" data-unit="${id}" title="Double-click to change the unit">/ ${esc(v.unit)}</span>` : ""}</td></tr>`; }).join("")}
+              <td class="right">${fields.map((f) => `<span class="dim" style="font-size:11px;margin-left:8px">${fields.length > 1 ? f : ""}</span> <input class="price-input ${overrides[id]?.[f] !== undefined ? "changed" : ""}" type="number" step="any" data-path="${id}" data-f="${f}" value="${v[f]}">`).join("")}${"unit" in v ? ` <span class="dim editable" style="font-size:11px" data-unit="${id}" title="Double-click to change the unit">/ ${esc(v.unit)}</span>` : ""} <button class="btn ghost xs danger hidden" data-hide="${id}" title="Remove from price book">${ICON.trash}</button></td></tr>`; }).join("")}
           ${mine.filter((x) => x.section_key === sec).map(customRow).join("")}
           </tbody></table></div>`).join("")}</div>`;
     wireStars(document, () => render());
@@ -754,8 +755,24 @@
       inp.onkeydown = (e) => { if (e.key === "Enter") finish(true); if (e.key === "Escape") finish(false); };
       inp.onblur = () => finish(true);
     };
-    $$("td[data-label]").forEach((td) => (td.ondblclick = () => inlineEdit(td, td.dataset.label, "label", td.textContent, (v) => v)));
-    $$("[data-unit]").forEach((sp) => (sp.ondblclick = () => inlineEdit(sp, sp.dataset.unit, "unit", sp.textContent.replace(/^\/\s*/, ""), (v) => `/ ${v}`)));
+    const showHide = (el, on) => { const b = el.closest("tr").querySelector("[data-hide]"); if (b) b.classList.toggle("hidden", !on); };
+    $$("td[data-label]").forEach((td) => (td.ondblclick = () => { showHide(td, true); inlineEdit(td, td.dataset.label, "label", td.textContent, (v) => v, null, () => setTimeout(() => showHide(td, false), 250)); }));
+    $$("[data-unit]").forEach((sp) => (sp.ondblclick = () => { showHide(sp, true); inlineEdit(sp, sp.dataset.unit, "unit", sp.textContent.replace(/^\/\s*/, ""), (v) => `/ ${v}`, null, () => setTimeout(() => showHide(sp, false), 250)); }));
+    const setHidden = async (id, hidden) => {
+      const cur = { ...(S.user.price_overrides || {}) };
+      const entry = { ...(cur[id] || {}) };
+      if (hidden) entry.hidden = true; else delete entry.hidden;
+      if (Object.keys(entry).length) cur[id] = entry; else delete cur[id];
+      const { user } = await api("/api/settings", { method: "PUT", body: { price_overrides: cur } });
+      S.user = user; await loadPricing(); render();
+    };
+    $$("[data-hide]").forEach((b) => (b.onmousedown = (e) => e.preventDefault(), b.onclick = async () => { if (await confirmDlg("Remove this entry from your price book? You can bring it back from the Hidden button.")) setHidden(b.dataset.hide, true); }));
+    const sh = $("#showhidden");
+    if (sh) sh.onclick = () => {
+      const m = modal(`<h2>Hidden entries</h2><table><tbody>${hiddenIds.map((id) => { const [sec, key] = id.split("."); const v = book[sec]?.[key]; return v ? `<tr><td>${esc(v.label)}<div class="dim" style="font-size:11px">${esc(sections[sec] || sec)}</div></td><td class="right"><button class="btn sm" data-restore="${id}">Restore</button></td></tr>` : ""; }).join("")}</tbody></table>
+        <div class="actions"><button class="btn" data-close>Close</button></div>`);
+      $$("[data-restore]", m.el).forEach((b) => (b.onclick = async () => { m.close(); await setHidden(b.dataset.restore, false); }));
+    };
     const customSave = (id, field) => async (val) => { const row = mine.find((x) => x.db_id === +id); await api(`/api/materials/${id}`, { method: "PUT", body: { ...row, section: row.section_key || row.section, [field]: val } }); };
     const showDel = (el, on) => { const b = el.closest("tr").querySelector("[data-delmat]"); if (b) b.classList.toggle("hidden", !on); };
     $$("[data-clabel]").forEach((sp) => (sp.ondblclick = () => { showDel(sp, true); inlineEdit(sp, sp.dataset.clabel, "label", sp.textContent, (v) => v, customSave(sp.dataset.clabel, "label"), () => setTimeout(() => showDel(sp, false), 250)); }));
