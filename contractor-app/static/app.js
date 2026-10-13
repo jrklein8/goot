@@ -683,7 +683,7 @@
   function pagePriceBook() {
     const { region, book } = S.pricing;
     const overrides = { ...(S.user.price_overrides || {}) };
-    const sections = { labor: "Billed labor rates ($ per man-hour, your margin included)", production: "Production rates (man-hours per unit of work)", job: "Job factors", conditions: "Site conditions (% added to labor)", competitors: "Competitor benchmarks (for the comparison card)", lumber: "Lumber", hardware: "Hardware & fasteners", drywall: "Drywall", trim: "Trim & doors", paint: "Paint", equipment: "Equipment & site protection", permits: "Permits (New Hanover County)", disposal: "Disposal", defaults: "Estimate defaults" };
+    const sections = { labor: "Labor rates ($ per hour, what the client is charged)", production: "Production rates (man-hours per unit of work)", job: "Job factors", conditions: "Site conditions (% added to labor)", competitors: "Competitor benchmarks (for the comparison card)", lumber: "Lumber", hardware: "Hardware & fasteners", drywall: "Drywall", trim: "Trim & doors", paint: "Paint", equipment: "Equipment & site protection", permits: "Permits (New Hanover County)", disposal: "Disposal", defaults: "Estimate defaults" };
     const mine = S.pricing.materials.filter((x) => !x.builtin);
     main().innerHTML = head("Price book", marketMetaLine(),
       `<button class="btn" id="market">${ICON.refresh} Update market prices</button><button class="btn" id="addmat">${ICON.plus} Add material</button><button class="btn" id="reset">Reset built-ins</button><button class="btn primary" id="save">Save changes</button>`) + `
@@ -695,7 +695,7 @@
           <td class="num"><input class="price-input" type="number" step="any" data-mid="${x.db_id}" data-f="cost" value="${x.cost}"></td>
           <td class="right"><button class="btn ghost xs danger" data-delmat="${x.db_id}" title="Delete">${ICON.trash}</button></td></tr>`).join("")}</tbody></table>` : `<div class="empty">No custom materials yet. Click <b>Add material</b> to put in anything you buy regularly.</div>`}</div>
       <div class="grid c2">${Object.entries(sections).map(([sec, label]) => `
-        <div class="card pad-0"><div class="card-head" style="padding:14px 18px 0"><h3>${label}</h3>${sec === "competitors" ? `<span class="dim" style="font-size:11px">${esc(S.pricing.benchmark_source)}</span>` : ""}${S.pricing.price_meta?.series?.[sec] ? `<span class="dim" style="font-size:11px">index: ${esc(S.pricing.price_meta.series[sec].label)} ${S.pricing.price_meta.series[sec].change_pct >= 0 ? "+" : ""}${S.pricing.price_meta.series[sec].change_pct}%</span>` : ""}</div>
+        <div class="card pad-0"><div class="card-head" style="padding:14px 18px 0"><h3>${label}</h3>${S.pricing.price_meta?.series?.[sec] ? `<span class="dim" style="font-size:11px">index: ${esc(S.pricing.price_meta.series[sec].label)} ${S.pricing.price_meta.series[sec].change_pct >= 0 ? "+" : ""}${S.pricing.price_meta.series[sec].change_pct}%</span>` : ""}</div>
           <table><tbody>${Object.entries(book[sec]).map(([key, v]) => {
             const fields = Object.keys(v).filter((k) => k !== "label");
             return `<tr><td>${esc(v.label)}${v.unit ? ` <span class="dim">/ ${esc(v.unit)}</span>` : ""}</td>
