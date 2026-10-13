@@ -706,13 +706,13 @@
     const loose = mine.filter((x) => !x.section_key);
     const favs = S.pricing.materials.filter((x) => isFav(x.id));
     const customRow = (x) => `<tr>
-          <td>${starHtml(x.id)}</td>
+          <td class="star-cell">${starHtml(x.id)}</td>
           <td><input type="text" data-mid="${x.db_id}" data-f="label" value="${esc(x.label)}"></td>
           <td class="right"><select data-mid="${x.db_id}" data-f="section" style="width:auto;padding:4px 26px 4px 8px;font-size:12px">${sectionOptions(x.section_key || x.section)}</select>
             <input class="price-input" type="number" step="any" data-mid="${x.db_id}" data-f="cost" value="${x.cost}"> <span class="dim" style="font-size:11px">/ ${esc(x.unit)}</span>
             <button class="btn ghost xs danger" data-delmat="${x.db_id}" title="Delete">${ICON.trash}</button></td></tr>`;
     const builtinRow = (x) => { const [sec, key] = x.id.split("."); const o = overrides[x.id]?.cost;
-      return `<tr><td>${starHtml(x.id)}</td><td>${esc(x.label)}</td><td class="right"><input class="price-input ${o !== undefined ? "changed" : ""}" type="number" step="any" data-path="${x.id}" data-f="cost" value="${x.cost}"> <span class="dim" style="font-size:11px">/ ${esc(x.unit)}</span></td></tr>`; };
+      return `<tr><td class="star-cell">${starHtml(x.id)}</td><td>${esc(x.label)}</td><td class="right"><input class="price-input ${o !== undefined ? "changed" : ""}" type="number" step="any" data-path="${x.id}" data-f="cost" value="${x.cost}"> <span class="dim" style="font-size:11px">/ ${esc(x.unit)}</span></td></tr>`; };
     main().innerHTML = head("Price book", marketMetaLine(),
       `<button class="btn" id="market">${ICON.refresh} Update market prices</button><button class="btn" id="addmat">${ICON.plus} Add material</button><button class="btn" id="reset">Reset built-ins</button><button class="btn primary" id="save">Save changes</button>`) + `
       <div class="card pad-0 mb"><div class="card-head" style="padding:14px 18px 0"><h3>★ Favorites</h3></div>
@@ -724,7 +724,8 @@
           <table><tbody>${Object.entries(book[sec]).map(([key, v]) => {
             const fields = Object.keys(v).filter((k) => k !== "label" && k !== "unit");
             const id = `${sec}.${key}`;
-            return `<tr><td style="width:28px">${"unit" in v ? starHtml(id) : ""}</td><td>${esc(v.label)}</td>
+            const starCell = Object.values(book[sec]).some((b) => "unit" in b) ? `<td class="star-cell">${"unit" in v ? starHtml(id) : ""}</td>` : "";
+            return `<tr>${starCell}<td>${esc(v.label)}</td>
               <td class="right">${fields.map((f) => `<span class="dim" style="font-size:11px;margin-left:8px">${fields.length > 1 ? f : ""}</span> <input class="price-input ${overrides[id]?.[f] !== undefined ? "changed" : ""}" type="number" step="any" data-path="${id}" data-f="${f}" value="${v[f]}">`).join("")}${"unit" in v ? ` <span class="dim" style="font-size:11px">/ ${esc(v.unit)}</span>` : ""}</td></tr>`; }).join("")}
           ${mine.filter((x) => x.section_key === sec).map(customRow).join("")}
           </tbody></table></div>`).join("")}</div>`;
