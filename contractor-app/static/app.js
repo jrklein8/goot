@@ -162,8 +162,11 @@
           <div class="error" id="autherr"></div>
           <button class="btn primary" style="justify-content:center">${mode === "login" ? "Sign in" : "Create account"}</button>
         </form>
+        ${mode === "login" ? `<div class="right" style="margin-top:12px"><a href="#" id="demo" class="dim" style="font-size:12px">Use demo account</a></div>` : ""}
       </div></div></div>`;
     $$(".tabs button").forEach((b) => (b.onclick = () => renderAuth(b.dataset.m)));
+    const demo = $("#demo");
+    if (demo) demo.onclick = (e) => { e.preventDefault(); $("[name=email]").value = "demo@example.com"; $("[name=password]").value = "demo1234"; $("#authf").requestSubmit(); };
     $("#authf").onsubmit = async (e) => {
       e.preventDefault();
       try {
