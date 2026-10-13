@@ -468,7 +468,7 @@
       const q = $("#mq", m.el).value.toLowerCase();
       const rows = mats.filter((x) => (!favOnly || isFav(x.id)) && (!q || `${x.label} ${x.section}`.toLowerCase().includes(q)))
         .sort((a, b) => (isFav(b.id) - isFav(a.id)));
-      $("#mrows", m.el).innerHTML = rows.map((x) => `<tr><td>${starHtml(x.id)}</td><td>${esc(x.label)}${x.builtin ? "" : ' <span class="badge" style="font-size:10px">mine</span>'}</td><td class="dim">${esc(x.section)}</td><td class="num">${money2(x.cost)} <span class="dim">/ ${esc(x.unit)}</span></td>
+      $("#mrows", m.el).innerHTML = rows.map((x) => `<tr><td>${starHtml(x.id)}</td><td>${esc(x.label)}${x.builtin ? "" : ''}</td><td class="dim">${esc(x.section)}</td><td class="num">${money2(x.cost)} <span class="dim">/ ${esc(x.unit)}</span></td>
         <td class="num"><input class="inline-num" type="number" step="any" min="0" data-id="${esc(x.id)}" value="${picked[x.id] ?? ""}" placeholder="0"></td></tr>`).join("") || `<tr><td colspan="5" class="empty">${favOnly ? "No favorites yet. Star items to pin them here." : "No matches. Add it under Price book."}</td></tr>`;
       $$("input[data-id]", m.el).forEach((i) => (i.oninput = () => { const v = parseFloat(i.value); if (v > 0) picked[i.dataset.id] = v; else delete picked[i.dataset.id]; sum(); }));
       wireStars(m.el, draw);
@@ -707,7 +707,7 @@
     const favs = S.pricing.materials.filter((x) => isFav(x.id));
     const customRow = (x) => `<tr>
           <td>${starHtml(x.id)}</td>
-          <td><input type="text" data-mid="${x.db_id}" data-f="label" value="${esc(x.label)}"> <span class="badge" style="font-size:10px">mine</span></td>
+          <td><input type="text" data-mid="${x.db_id}" data-f="label" value="${esc(x.label)}"></td>
           <td class="right"><select data-mid="${x.db_id}" data-f="section" style="width:auto;padding:4px 26px 4px 8px;font-size:12px">${sectionOptions(x.section_key || x.section)}</select>
             <input class="price-input" type="number" step="any" data-mid="${x.db_id}" data-f="cost" value="${x.cost}"> <span class="dim" style="font-size:11px">/ ${esc(x.unit)}</span>
             <button class="btn ghost xs danger" data-delmat="${x.db_id}" title="Delete">${ICON.trash}</button></td></tr>`;
