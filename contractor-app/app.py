@@ -47,7 +47,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
   name TEXT, business_name TEXT, phone TEXT, license_no TEXT, address TEXT,
-  markup_pct REAL DEFAULT 20, contingency_pct REAL DEFAULT 7.5, tax_pct REAL DEFAULT 7.0,
+  markup_pct REAL DEFAULT 20, contingency_pct REAL DEFAULT 5, tax_pct REAL DEFAULT 7.0,
   price_overrides TEXT DEFAULT '{}', ics_token TEXT UNIQUE, created_at TEXT
 );
 CREATE TABLE IF NOT EXISTS jobs (
@@ -55,6 +55,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   title TEXT NOT NULL, client_name TEXT, client_phone TEXT, client_email TEXT,
   address TEXT, job_type TEXT, status TEXT DEFAULT 'lead', notes TEXT,
   markup_pct REAL, contingency_pct REAL, tax_pct REAL,
+  conditions TEXT DEFAULT '[]', trips INTEGER DEFAULT 0,
   created_at TEXT, updated_at TEXT
 );
 CREATE TABLE IF NOT EXISTS line_items (
@@ -98,6 +99,9 @@ def init_db():
     os.makedirs(os.path.dirname(DB_PATH), exist_ok=True)
     conn = sqlite3.connect(DB_PATH)
     conn.executescript(SCHEMA)
+    for col, ddl in (("conditions", "TEXT DEFAULT '[]'"), ("trips", "INTEGER DEFAULT 0")):
+        if col not in [r[1] for r in conn.execute("PRAGMA table_info(jobs)")]:
+            conn.execute(f"ALTER TABLE jobs ADD COLUMN {col} {ddl}")
     conn.commit()
     if conn.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0:
         seed_demo(conn)
@@ -234,6 +238,7 @@ def get_pricing():
     book = pricing.merged_prices(overrides_for(u))
     return jsonify(region=pricing.REGION, book=book, calculators=pricing.calculator_catalog(),
                    materials=pricing.material_catalog(book) + custom_materials(u["id"]),
+                   conditions=pricing.conditions_catalog(book),
                    statuses=JOB_STATUSES, event_types=EVENT_TYPES)
 
 
@@ -297,9 +302,13 @@ def delete_material(mid):
 def run_calc(name):
     u = current_user()
     try:
-        return jsonify(pricing.run_calculator(name, request.get_json(force=True) or {}, overrides_for(u)))
+        res = pricing.run_calculator(name, request.get_json(force=True) or {}, overrides_for(u))
     except KeyError:
         return jsonify(error="Unknown calculator"), 404
+    book = pricing.merged_prices(overrides_for(u))
+    res["summary"] = pricing.summarize(res["items"], book, u["markup_pct"], u["contingency_pct"], u["tax_pct"])
+    res["competitors"] = pricing.competitor_quotes(res["items"], book, res["summary"])
+    return jsonify(res)
 
 
 # ------------------------------------------------------------------ jobs
@@ -311,10 +320,17 @@ def job_row_json(j, u, with_items=False):
     mk = j["markup_pct"] if j["markup_pct"] is not None else u["markup_pct"]
     ct = j["contingency_pct"] if j["contingency_pct"] is not None else u["contingency_pct"]
     tx = j["tax_pct"] if j["tax_pct"] is not None else u["tax_pct"]
-    out["summary"] = pricing.summarize(items, mk, ct, tx)
+    try:
+        conds = json.loads(j["conditions"] or "[]")
+    except (json.JSONDecodeError, TypeError):
+        conds = []
+    out["conditions"] = conds
+    book = pricing.merged_prices(overrides_for(u))
+    out["summary"] = pricing.summarize(items, book, mk, ct, tx, conds, j["trips"] or 0)
     out["item_count"] = len(items)
     if with_items:
         out["items"] = items
+        out["competitors"] = pricing.competitor_quotes(items, book, out["summary"])
         out["events"] = [dict(e) for e in db().execute(
             "SELECT * FROM events WHERE job_id=? ORDER BY start", (j["id"],)).fetchall()]
     return out
@@ -342,11 +358,13 @@ def create_job():
     if not (d.get("title") or "").strip():
         return jsonify(error="Job title required"), 400
     status = d.get("status") if d.get("status") in JOB_STATUSES else "lead"
+    conds = [c for c in (d.get("conditions") or []) if isinstance(c, str)]
     cur = db().execute(
-        """INSERT INTO jobs (user_id,job_no,title,client_name,client_phone,client_email,address,job_type,status,notes,created_at,updated_at)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+        """INSERT INTO jobs (user_id,job_no,title,client_name,client_phone,client_email,address,job_type,status,notes,conditions,trips,created_at,updated_at)
+           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
         (u["id"], next_job_no(u["id"]), d["title"].strip(), d.get("client_name", ""), d.get("client_phone", ""),
-         d.get("client_email", ""), d.get("address", ""), d.get("job_type", ""), status, d.get("notes", ""), now(), now()))
+         d.get("client_email", ""), d.get("address", ""), d.get("job_type", ""), status, d.get("notes", ""),
+         json.dumps(conds), int(d.get("trips") or 0), now(), now()))
     db().commit()
     j = db().execute("SELECT * FROM jobs WHERE id=?", (cur.lastrowid,)).fetchone()
     return jsonify(job=job_row_json(j, u, True)), 201
@@ -381,6 +399,13 @@ def update_job(job_id):
     for k in ("markup_pct", "contingency_pct", "tax_pct"):
         if k in d:
             fields[k] = None if d[k] in (None, "") else float(d[k])
+    if "conditions" in d and isinstance(d["conditions"], list):
+        fields["conditions"] = json.dumps([c for c in d["conditions"] if isinstance(c, str)])
+    if "trips" in d:
+        try:
+            fields["trips"] = max(0, int(d["trips"] or 0))
+        except (TypeError, ValueError):
+            return jsonify(error="trips must be a whole number"), 400
     fields["updated_at"] = now()
     sets = ", ".join(f"{k}=?" for k in fields)
     db().execute(f"UPDATE jobs SET {sets} WHERE id=?", (*fields.values(), job_id))
@@ -632,11 +657,19 @@ def seed_demo(conn):
         conn.execute("INSERT INTO materials (user_id,section,label,unit,cost,category,created_at) VALUES (?,?,?,?,?,?,?)",
                      (uid, sec, label, unit, cost, "material", now()))
 
-    def job(title, client, phone, addr, jtype, status, notes=""):
+    def job(title, client, phone, addr, jtype, status, notes="", conditions=(), trips=0):
         n = conn.execute("SELECT COUNT(*) FROM jobs WHERE user_id=?", (uid,)).fetchone()[0] + 1
         return conn.execute(
-            "INSERT INTO jobs (user_id,job_no,title,client_name,client_phone,client_email,address,job_type,status,notes,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-            (uid, f"J{date.today().year}-{n:03d}", title, client, phone, "", addr, jtype, status, notes, now(), now())).lastrowid
+            "INSERT INTO jobs (user_id,job_no,title,client_name,client_phone,client_email,address,job_type,status,notes,conditions,trips,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            (uid, f"J{date.today().year}-{n:03d}", title, client, phone, "", addr, jtype, status, notes, json.dumps(list(conditions)), trips, now(), now())).lastrowid
+
+    book = pricing.merged_prices()
+
+    def add_mat(job_id, sec, key, qty, label, group):
+        it = pricing._mat(book, sec, key, qty)
+        conn.execute(
+            "INSERT INTO line_items (job_id,source,group_label,description,category,qty,unit,unit_cost,total,sort_order,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (job_id, "pricebook", group, label or it["description"], it["category"], it["qty"], it["unit"], it["unit_cost"], it["total"], 50, now()))
 
     def add_calc(job_id, name, params, label):
         res = pricing.run_calculator(name, params)
@@ -645,30 +678,45 @@ def seed_demo(conn):
                 "INSERT INTO line_items (job_id,source,group_label,description,category,qty,unit,unit_cost,total,sort_order,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
                 (job_id, name, label, it["description"], it["category"], it["qty"], it["unit"], it["unit_cost"], it["total"], i, now()))
 
+    j0 = job("Close in half hall + add door", "Justin K.", "(910) 555-0120", "Wilmington, NC 28405",
+             "Interior", "quoted",
+             "16 ft total length including a new door. Existing half wall is 44.5 in tall, ceiling 8 ft. Right side wall is offset 3 in, "
+             "so build out 3 in on that side. Opening between wall and half wall is 44 in. Back side is over the stairs: scaffold/plank "
+             "needed for drywall and paint on that face.\n\nQuoted at $4,150.",
+             conditions=("stairs_scaffold", "occupied"), trips=5)
+    add_calc(j0, "framing", {"wall_lf": 16, "height_ft": 8, "openings": 1, "corners": 2, "furring_lf": 8}, "Frame upper wall + door, build out 3 in")
+    add_calc(j0, "drywall", {"wall_sqft": 200, "corner_lf": 20}, "Drywall both faces")
+    add_calc(j0, "trim", {"baseboard_lf": 0, "doors": 1, "cased_openings": 1}, "Prehung door + casing")
+    add_calc(j0, "paint", {"wall_sqft": 200, "trim_lf": 17, "doors": 1, "coats": 2, "primer": 1}, "Prime + paint, door")
+    add_mat(j0, "equipment", "stair_scaffold_setup", 1, None, "Stairway scaffolding")
+    add_mat(j0, "equipment", "dust_wall_kit", 1, None, "Stairway scaffolding")
+
     j1 = job("Backyard composite deck", "Sarah Mitchell", "(910) 555-0199", "412 Pine Grove Dr, Wilmington, NC 28403",
-             "Deck", "quoted", "Wants Trex Enhance in Coastal Bluff. HOA approval needed. Access from side yard gate.")
+             "Deck", "quoted", "Wants Trex Enhance in Coastal Bluff. HOA approval needed. Access from side yard gate.", trips=6)
     add_calc(j1, "deck", {"length_ft": 18, "width_ft": 14, "height_ft": 4, "material": "composite", "stairs": 1, "permit": 1}, "Deck 18x14 composite")
     add_calc(j1, "hourly", {"trade": "electrician", "hours": 5, "materials": 420, "materials_desc": "Low-voltage deck lighting kit"}, "Deck lighting")
 
     j2 = job("Bonus room finish-out over garage", "Marcus Lee", "(910) 555-0133", "2207 Oleander Dr, Wilmington, NC 28403",
-             "Interior", "estimating", "Currently open studs. Wants a closet and a door to the hall. Electrical by his cousin.")
+             "Interior", "estimating", "Currently open studs. Wants a closet and a door to the hall. Electrical by his cousin.",
+             conditions=("occupied",), trips=7)
     add_calc(j2, "framing", {"wall_lf": 22, "height_ft": 8, "stud_size": "2x4", "openings": 2, "corners": 3}, "Closet + hall wall framing")
     add_calc(j2, "drywall", {"wall_sqft": 1040, "ceiling_sqft": 380, "corner_lf": 32, "thickness": "half"}, "Drywall 1,040 wall / 380 ceiling")
     add_calc(j2, "trim", {"baseboard_lf": 128, "base_type": "mdf", "doors": 2, "door_type": "hollow", "shoe": 0}, "Trim + 2 doors")
     add_calc(j2, "paint", {"wall_sqft": 1040, "ceiling_sqft": 380, "trim_lf": 128, "doors": 2, "coats": 2, "primer": 1}, "Paint bonus room")
 
     j3 = job("Garage partition wall + storage room", "Tom and Ana Reyes", "(910) 555-0177", "815 Carolina Beach Rd, Wilmington, NC 28412",
-             "Framing", "approved", "Wall on slab, PT bottom plate. 5/8 Type X on the house side. Owner supplies the door.")
+             "Framing", "approved", "Wall on slab, PT bottom plate. 5/8 Type X on the house side. Owner supplies the door.", trips=4)
     add_calc(j3, "framing", {"wall_lf": 28, "height_ft": 9, "stud_size": "2x4", "openings": 1, "corners": 1, "pt_bottom_plate": 1}, "Partition wall 28 lf")
     add_calc(j3, "drywall", {"wall_sqft": 504, "ceiling_sqft": 0, "corner_lf": 18, "thickness": "58"}, "Drywall 5/8 both sides")
     add_calc(j3, "trim", {"baseboard_lf": 0, "doors": 0, "cased_openings": 1}, "Case the door opening")
 
     j4 = job("Screened porch deck rebuild", "Denise Carter", "(910) 555-0161", "1308 Market St, Wilmington, NC 28401",
-             "Deck", "lead", "Existing PT deck is rotted at the ledger. Keep the screen frame if possible. Wants estimate before Thanksgiving.")
+             "Deck", "lead", "Existing PT deck is rotted at the ledger. Keep the screen frame if possible. Wants estimate before Thanksgiving.",
+             conditions=("tight_access",), trips=5)
     add_calc(j4, "deck", {"length_ft": 14, "width_ft": 12, "height_ft": 2, "material": "pt", "stairs": 1, "demo": 1, "permit": 1}, "Deck 14x12 PT rebuild")
 
     j5 = job("Closet + laundry room build-out", "Kyle Brandt", "(910) 555-0108", "5 Shipyard Blvd, Wilmington, NC 28412",
-             "Interior", "complete", "Done 2 weeks ago. Ask for Google review.")
+             "Interior", "complete", "Done 2 weeks ago. Ask for Google review.", conditions=("occupied",), trips=6)
     add_calc(j5, "framing", {"wall_lf": 18, "height_ft": 8, "openings": 2, "corners": 2}, "Framing 18 lf")
     add_calc(j5, "drywall", {"wall_sqft": 560, "ceiling_sqft": 90, "corner_lf": 24}, "Drywall")
     add_calc(j5, "trim", {"baseboard_lf": 64, "doors": 2, "door_type": "solid"}, "Trim + 2 solid doors")
@@ -681,6 +729,10 @@ def seed_demo(conn):
         conn.execute("INSERT INTO events (user_id,job_id,title,type,start,end,all_day,location,notes,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
                      (uid, job_id, title, etype, start.isoformat(timespec="minutes"), end.isoformat(timespec="minutes"), all_day, loc, notes, now()))
 
+    ev(j0, "Half hall: frame + hang drywall", "work", 1, 8, 8, "Justin's place", "Set stair plank first. ZipWall at hall.")
+    ev(j0, "Half hall: tape + 2nd coat", "work", 2, 8, 3, "Justin's place")
+    ev(j0, "Half hall: 3rd coat, sand, hang door", "work", 3, 8, 4, "Justin's place")
+    ev(j0, "Half hall: prime + paint", "work", 4, 8, 5, "Justin's place")
     ev(j4, "Site visit + measure porch", "site_visit", 1, 9, 1, "1308 Market St", "Bring moisture meter, check ledger + joists")
     ev(j3, "Frame garage partition wall", "work", 2, 7, 8, "815 Carolina Beach Rd", "PT plate, Tapcons, 5/8 board on house side")
     ev(j3, "Lumber + drywall delivery (84 Lumber)", "delivery", 2, 7, 1, "815 Carolina Beach Rd")

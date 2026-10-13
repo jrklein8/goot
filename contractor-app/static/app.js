@@ -281,6 +281,36 @@
     setTimeout(() => $("[name=title]", m.el).focus(), 30);
   }
 
+  // ------------------------------------------------------------ totals + competitors
+  function totalsHtml(sm) {
+    const hrs = sm.labor_hours_adj || sm.labor_hours || 0;
+    return `<h3 class="mb">Totals</h3><div class="totals">
+      ${Object.entries(sm.by_category).map(([c, v]) => `<div class="line"><span><span class="cat ${c}">${c}</span>${c === "labor" ? ` <span class="dim">${num(sm.labor_hours)} hr</span>` : ""}</span><b>${money2(v)}</b></div>`).join("")}
+      <div class="line" style="border-top:1px solid var(--border);padding-top:7px"><span>Direct cost</span><b>${money2(sm.direct_cost)}</b></div>
+      ${sm.conditions_adj ? `<div class="line"><span>Site conditions (+${sm.conditions_pct}% labor)</span><b>${money2(sm.conditions_adj)}</b></div>` : ""}
+      ${sm.trips_cost ? `<div class="line"><span>${sm.trips} trips × ${money2(sm.trip_charge)}</span><b>${money2(sm.trips_cost)}</b></div>` : ""}
+      <div class="line"><span>Sales tax on materials (${sm.tax_pct}%)</span><b>${money2(sm.sales_tax)}</b></div>
+      <div class="line"><span>Contingency (${sm.contingency_pct}%)</span><b>${money2(sm.contingency)}</b></div>
+      <div class="line"><span>Markup on materials + pass-throughs (${sm.markup_pct}%)</span><b>${money2(sm.markup)}</b></div>
+      ${sm.minimum_adj ? `<div class="line"><span>Minimum job charge (${money(sm.minimum_job)})</span><b>${money2(sm.minimum_adj)}</b></div>` : ""}
+      <div class="line grand"><span>Client price</span><b>${money2(sm.total)}</b></div>
+      ${hrs ? `<div class="dim" style="font-size:12px;text-align:right">≈ ${num(hrs)} man-hours · ${num(sm.crew_days)} days with a ${sm.crew_size}-person crew</div>` : ""}
+    </div>`;
+  }
+
+  function competitorsHtml(bands, ours) {
+    if (!bands || !bands.length || !ours) return `<h3 class="mb">What others would likely quote</h3><div class="dim">Add line items first.</div>`;
+    const lo = Math.min(...bands.map((b) => b.low), ours), hi = Math.max(...bands.map((b) => b.high), ours);
+    const pct = (v) => ((v - lo) / (hi - lo || 1)) * 100;
+    const mine = bands.find((b) => ours >= b.low && ours <= b.high);
+    const verdict = mine ? `sits in the <b>${esc(mine.name.toLowerCase())}</b> range.` : ours < bands[0].low ? "is <b>below handyman rates</b>. Check the hours." : ours > bands[bands.length - 1].high ? "is <b>above established-remodeler rates</b>." : "is between bands.";
+    return `<h3 class="mb">What others would likely quote</h3><div class="cmp">${bands.map((b) => `
+      <div class="band ${b.key}" title="${esc(b.blurb)}"><div class="name">${esc(b.name)}<small>$${b.rate}/hr · ${b.markup}% on materials</small></div>
+        <div class="track"><span style="left:${pct(b.low).toFixed(1)}%;width:${(pct(b.high) - pct(b.low)).toFixed(1)}%"></span><i class="you" style="left:${pct(ours).toFixed(1)}%"></i></div>
+        <div class="range">${money(b.low)} – ${money(b.high)}</div></div>`).join("")}</div>
+      <div class="dim mt" style="font-size:12px">Your price <b style="color:var(--accent)">${money(ours)}</b> ${verdict} Same hours and materials re-priced at typical Wilmington rates; tune the benchmarks in the price book.</div>`;
+  }
+
   // ------------------------------------------------------------ job detail
   async function pageJob(id) {
     let job;
@@ -318,15 +348,7 @@
           </div>
           <div>
             <div class="card">
-              <h3 class="mb">Totals</h3>
-              <div class="totals">
-                ${Object.entries(sm.by_category).map(([c, v]) => `<div class="line"><span><span class="cat ${c}">${c}</span></span><b>${money2(v)}</b></div>`).join("")}
-                <div class="line" style="border-top:1px solid var(--border);padding-top:7px"><span>Direct cost</span><b>${money2(sm.direct_cost)}</b></div>
-                <div class="line"><span>Sales tax on materials (${sm.tax_pct}%)</span><b>${money2(sm.sales_tax)}</b></div>
-                <div class="line"><span>Contingency (${sm.contingency_pct}%)</span><b>${money2(sm.contingency)}</b></div>
-                <div class="line"><span>Overhead + profit (${sm.markup_pct}%)</span><b>${money2(sm.markup)}</b></div>
-                <div class="line grand"><span>Client price</span><b>${money2(sm.total)}</b></div>
-              </div>
+              ${totalsHtml(sm)}
               <div class="pct-row mt">
                 <label class="field"><span>Markup %</span><input type="number" step="0.5" data-pct="markup_pct" value="${job.markup_pct ?? ""}" placeholder="${u.markup_pct}"></label>
                 <label class="field"><span>Contingency %</span><input type="number" step="0.5" data-pct="contingency_pct" value="${job.contingency_pct ?? ""}" placeholder="${u.contingency_pct}"></label>
@@ -334,6 +356,13 @@
               </div>
               <div class="dim" style="font-size:11.5px;margin-top:6px">Blank = your defaults from Settings.</div>
             </div>
+            <div class="card">
+              <h3 class="mb">Job factors</h3>
+              <div class="stack" style="gap:2px">${S.pricing.conditions.map((c) => `<label class="check"><input type="checkbox" data-cond="${c.key}" ${(job.conditions || []).includes(c.key) ? "checked" : ""}> ${esc(c.label)} <span class="dim">+${c.pct}%</span></label>`).join("")}</div>
+              <label class="field mt"><span>Trips to the site</span><input type="number" min="0" step="1" id="trips" value="${job.trips || 0}" style="max-width:120px"></label>
+              <div class="dim" style="font-size:11.5px;margin-top:6px">${money2(sm.trip_charge)} per trip. Drywall needs 3+ visits for mud to dry, paint 2. Odd stuff like stairway scaffolding goes in as a line from the price book (Equipment).</div>
+            </div>
+            <div class="card">${competitorsHtml(job.competitors, sm.total)}</div>
             <div class="card">
               <h3 class="mb">Client</h3>
               <dl class="kv">
@@ -363,6 +392,8 @@
       $$("[data-qty]").forEach((i) => (i.onchange = () => saveItem(i.dataset.qty, { qty: i.value })));
       $$("[data-uc]").forEach((i) => (i.onchange = () => saveItem(i.dataset.uc, { unit_cost: i.value })));
       $$("[data-pct]").forEach((i) => (i.onchange = async () => { job = (await api(`/api/jobs/${job.id}`, { method: "PUT", body: { [i.dataset.pct]: i.value } })).job; draw(); }));
+      $$("[data-cond]").forEach((i) => (i.onchange = async () => { const conds = $$("[data-cond]").filter((c) => c.checked).map((c) => c.dataset.cond); job = (await api(`/api/jobs/${job.id}`, { method: "PUT", body: { conditions: conds } })).job; draw(); }));
+      $("#trips").onchange = async (e) => { job = (await api(`/api/jobs/${job.id}`, { method: "PUT", body: { trips: e.target.value } })).job; draw(); };
     };
     const reload = async () => { job = (await api(`/api/jobs/${id}`)).job; draw(); };
     draw();
@@ -433,7 +464,7 @@
           <div><div class="small">PROJECT</div><b>${esc(job.title)}</b><br>${esc(job.job_type || "")}</div></div>
         <table class="mt"><thead><tr><th>Scope</th><th class="num">Amount</th></tr></thead><tbody>
           ${Object.entries(groups).map(([g, items]) => { const sub = items.reduce((a, i) => a + i.total, 0); const share = sm.direct_cost ? sub / sm.direct_cost : 0;
-            const client = sub + sm.sales_tax * (items.filter((i) => i.category === "material").reduce((a, i) => a + i.total, 0) / (sm.by_category.material || 1)) + (sm.contingency + sm.markup) * share;
+            const client = sub + (sm.total - sm.direct_cost) * share;
             return `<tr><td><b>${esc(g)}</b><div class="small">${items.map((i) => esc(i.description)).join(", ")}</div></td><td class="num">${money2(client)}</td></tr>`; }).join("")}
         </tbody></table>
         <div class="totals mt" style="max-width:320px;margin-left:auto"><div class="line grand"><span>Total</span><b>${money2(sm.total)}</b></div></div>
@@ -481,18 +512,14 @@
     };
     const run = async () => {
       try { result = await api(`/api/calc/${active}`, { method: "POST", body: formData($("#cform")) }); } catch (err) { $("#cres").innerHTML = `<div class="error">${esc(err.message)}</div>`; return; }
-      const byCat = {};
-      result.items.forEach((i) => (byCat[i.category] = (byCat[i.category] || 0) + i.total));
-      const u = S.user, direct = result.subtotal;
-      const client = direct + (byCat.material || 0) * u.tax_pct / 100 + direct * u.contingency_pct / 100 + (direct * (1 + u.contingency_pct / 100)) * u.markup_pct / 100;
       $("#cres").innerHTML = `
         <div class="row between wrap mb"><div class="row wrap">${Object.entries(result.meta).map(([k, v]) => `<span class="meta-chip">${titleCase(k)} <b>${num(v)}</b></span>`).join("")}</div>
           <div class="row"><select id="jobsel" style="width:240px"><option value="">Add to job…</option><option value="__new">+ New job from this</option>${openJobs.map((j) => `<option value="${j.id}" ${String(j.id) === String(jobIdArg) ? "selected" : ""}>${esc(j.job_no)} · ${esc(j.title)}</option>`).join("")}</select>
             <button class="btn primary" id="addtojob">${ICON.plus} Add</button></div></div>
         <div class="table-wrap"><table><thead><tr><th>Item</th><th>Type</th><th class="num">Qty</th><th>Unit</th><th class="num">Unit cost</th><th class="num">Total</th></tr></thead>
           <tbody>${result.items.map((i) => `<tr><td>${esc(i.description)}</td><td><span class="cat ${i.category}">${i.category}</span></td><td class="num">${num(i.qty)}</td><td class="dim">${esc(i.unit)}</td><td class="num">${money2(i.unit_cost)}</td><td class="num">${money2(i.total)}</td></tr>`).join("")}</tbody></table></div>
-        <div class="grid c2 mt"><div class="totals">${Object.entries(byCat).map(([c, v]) => `<div class="line"><span><span class="cat ${c}">${c}</span></span><b>${money2(v)}</b></div>`).join("")}</div>
-          <div class="totals"><div class="line"><span>Direct cost</span><b>${money2(direct)}</b></div><div class="line"><span>With tax, ${u.contingency_pct}% contingency, ${u.markup_pct}% markup</span><b></b></div><div class="line grand"><span>Client price (approx.)</span><b>${money2(client)}</b></div></div></div>`;
+        <div class="grid c2 mt"><div>${totalsHtml(result.summary)}<div class="dim" style="font-size:11.5px;margin-top:6px">Before job factors (site conditions, trips). Set those on the job.</div></div>
+          <div>${competitorsHtml(result.competitors, result.summary.total)}</div></div>`;
       $("#addtojob").onclick = async () => {
         const v = $("#jobsel").value;
         if (!v) return toast("Pick a job first", "err");
@@ -605,7 +632,7 @@
   function pagePriceBook() {
     const { region, book } = S.pricing;
     const overrides = { ...(S.user.price_overrides || {}) };
-    const sections = { lumber: "Lumber", hardware: "Hardware & fasteners", drywall: "Drywall", trim: "Trim & doors", paint: "Paint", labor: "Labor rates ($/hr, burdened)", deck: "Deck labor rates", framing: "Framing labor rates", permits: "Permits (New Hanover County)", disposal: "Disposal", defaults: "Estimate defaults" };
+    const sections = { labor: "Billed labor rates ($ per man-hour, your margin included)", production: "Production rates (man-hours per unit of work)", job: "Job factors", conditions: "Site conditions (% added to labor)", competitors: "Competitor benchmarks (for the comparison card)", lumber: "Lumber", hardware: "Hardware & fasteners", drywall: "Drywall", trim: "Trim & doors", paint: "Paint", equipment: "Equipment & site protection", permits: "Permits (New Hanover County)", disposal: "Disposal", defaults: "Estimate defaults" };
     const mine = S.pricing.materials.filter((x) => !x.builtin);
     main().innerHTML = head("Price book", `${esc(region.name)} · edit any number and it flows into every calculator`,
       `<button class="btn" id="addmat">${ICON.plus} Add material</button><button class="btn" id="reset">Reset built-ins</button><button class="btn primary" id="save">Save changes</button>`) + `
@@ -683,11 +710,11 @@
           <div class="card"><h3 class="mb">Estimate defaults</h3>
             <form id="df" class="stack">
               <div class="pct-row">
-                <label class="field"><span>Markup % (overhead + profit)</span><input name="markup_pct" type="number" step="0.5" value="${u.markup_pct}"></label>
+                <label class="field"><span>Markup % (materials + pass-throughs)</span><input name="markup_pct" type="number" step="0.5" value="${u.markup_pct}"></label>
                 <label class="field"><span>Contingency %</span><input name="contingency_pct" type="number" step="0.5" value="${u.contingency_pct}"></label>
                 <label class="field"><span>Sales tax % (materials)</span><input name="tax_pct" type="number" step="0.25" value="${u.tax_pct}"></label>
               </div>
-              <p class="dim" style="font-size:12px">Typical residential remodel markup runs 20–35%. Any job can override these on its own page.</p>
+              <p class="dim" style="font-size:12px">Labor is billed by the man-hour at the rates in the price book, with your margin built in, so markup only touches materials, equipment and disposal. Typical: 15–30%. Any job can override these on its own page.</p>
               <button class="btn primary" style="align-self:flex-start">Save defaults</button>
             </form></div>
           <div class="card"><h3 class="mb">Account</h3>

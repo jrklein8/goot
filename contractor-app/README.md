@@ -39,10 +39,30 @@ trade labor by the hour. Results update live and can be pushed into any
 open job as a named group of line items (or spin up a new job).
 
 **Estimate** - line items grouped by where they came from, with inline qty
-and unit-cost edits, custom lines, category subtotals, NC sales tax on
-materials only, contingency, and overhead + profit markup. Per-job overrides
-for the percentages. A printable client proposal hides unit costs and shows
-grouped scope pricing.
+and unit-cost edits, custom lines, category subtotals, and a printable
+client proposal that hides unit costs and shows grouped scope pricing.
+
+**How labor is priced** - the way a small contractor actually thinks, not
+per square foot. Each calculator turns the work into **man-hours** using
+production rates (hours per foot of wall, per sheet, per door) and bills
+them at a per-trade hourly rate that already carries his pay, overhead and
+profit. Markup only touches materials and pass-throughs. Then **job
+factors** handle what makes small jobs expensive: site conditions (over
+stairs / scaffolding, occupied home, tight access, high ceilings, old
+house) add a percentage to labor, every trip to the site has a charge
+(drywall alone is three visits while mud dries), and a minimum job charge
+catches the tiny ones. The totals card shows man-hours and crew-days,
+which is what he needs to put it on the calendar.
+
+Calibrated against a real quote: closing in a half hall with a door
+(framing, drywall, paint, 3 in build-out, scaffolding over stairs) was
+quoted at $4,150; the model lands within a few percent and that job is
+seeded in the demo account.
+
+**"What others would likely quote"** - every job and calculator result
+re-prices the same hours and materials at typical Wilmington rates for a
+handyman, a small licensed contractor, and an established remodeler, and
+shows where his price sits. The benchmark rates live in the price book.
 
 **Price book** - lumber, hardware, drywall, trim, paint, labor rates,
 permits and disposal in one place with per-user overrides and a reset.
