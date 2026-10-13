@@ -37,6 +37,7 @@ body {
 }
 a { color: var(--accent); text-decoration: none; }
 a:hover { text-decoration: underline; }
+a > svg, .kv svg { width: 13px; height: 13px; vertical-align: -2px; margin-left: 3px; }
 h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
 h1 { font-size: 22px; }
 h2 { font-size: 17px; }
