@@ -646,7 +646,7 @@ def dashboard():
 def seed_demo(conn):
     uid = conn.execute(
         "INSERT INTO users (email,password_hash,name,business_name,phone,license_no,address,ics_token,created_at) VALUES (?,?,?,?,?,?,?,?,?)",
-        ("demo@example.com", generate_password_hash("demo1234"), "Demo Owner", "Demo Contracting Co.",
+        ("demo@example.com", generate_password_hash("demo1234"), "Demo Owner", "goot buildin shit",
          "(910) 555-0142", "NC GC #00000 (limited)", "Wilmington, NC 28401", secrets.token_urlsafe(24), now())).lastrowid
 
     for sec, label, unit, cost in [

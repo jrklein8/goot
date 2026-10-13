@@ -235,7 +235,7 @@
 
   async function pageJobs() {
     let filter = "all", q = "";
-    main().innerHTML = head("Jobs", "Every estimate lives under a job.", `<button class="btn primary" id="newjob">${ICON.plus} New job</button>`) + `
+    main().innerHTML = head("Jobs", "", `<button class="btn primary" id="newjob">${ICON.plus} New job</button>`) + `
       <div class="row between wrap mb"><div class="chips" id="chips"></div><input type="text" id="q" placeholder="Search client, address, job…" style="max-width:280px"></div>
       <div class="card pad-0" id="list"><div class="empty">Loading…</div></div>`;
     $("#newjob").onclick = () => jobModal();
@@ -308,7 +308,7 @@
       <div class="band ${b.key}" title="${esc(b.blurb)}"><div class="name">${esc(b.name)}<small>$${b.rate}/hr · ${b.markup}% on materials</small></div>
         <div class="track"><span style="left:${pct(b.low).toFixed(1)}%;width:${(pct(b.high) - pct(b.low)).toFixed(1)}%"></span><i class="you" style="left:${pct(ours).toFixed(1)}%"></i></div>
         <div class="range">${money(b.low)} – ${money(b.high)}</div></div>`).join("")}</div>
-      <div class="dim mt" style="font-size:12px">Your price <b style="color:var(--accent)">${money(ours)}</b> ${verdict} Same hours and materials re-priced at typical Wilmington rates; tune the benchmarks in the price book.</div>`;
+      <div class="dim mt" style="font-size:12px">Your price <b style="color:var(--accent)">${money(ours)}</b> ${verdict}</div>`;
   }
 
   // ------------------------------------------------------------ job detail
@@ -354,13 +354,11 @@
                 <label class="field"><span>Contingency %</span><input type="number" step="0.5" data-pct="contingency_pct" value="${job.contingency_pct ?? ""}" placeholder="${u.contingency_pct}"></label>
                 <label class="field"><span>Tax %</span><input type="number" step="0.25" data-pct="tax_pct" value="${job.tax_pct ?? ""}" placeholder="${u.tax_pct}"></label>
               </div>
-              <div class="dim" style="font-size:11.5px;margin-top:6px">Blank = your defaults from Settings.</div>
             </div>
             <div class="card">
               <h3 class="mb">Job factors</h3>
               <div class="stack" style="gap:2px">${S.pricing.conditions.map((c) => `<label class="check"><input type="checkbox" data-cond="${c.key}" ${(job.conditions || []).includes(c.key) ? "checked" : ""}> ${esc(c.label)} <span class="dim">+${c.pct}%</span></label>`).join("")}</div>
               <label class="field mt"><span>Trips to the site</span><input type="number" min="0" step="1" id="trips" value="${job.trips || 0}" style="max-width:120px"></label>
-              <div class="dim" style="font-size:11.5px;margin-top:6px">${money2(sm.trip_charge)} per trip. Drywall needs 3+ visits for mud to dry, paint 2. Odd stuff like stairway scaffolding goes in as a line from the price book (Equipment).</div>
             </div>
             <div class="card">${competitorsHtml(job.competitors, sm.total)}</div>
             <div class="card">
@@ -468,7 +466,7 @@
             return `<tr><td><b>${esc(g)}</b><div class="small">${items.map((i) => esc(i.description)).join(", ")}</div></td><td class="num">${money2(client)}</td></tr>`; }).join("")}
         </tbody></table>
         <div class="totals mt" style="max-width:320px;margin-left:auto"><div class="line grand"><span>Total</span><b>${money2(sm.total)}</b></div></div>
-        <p class="small mt">Pricing includes materials, labor, applicable permits and NC sales tax on materials. Valid for 30 days. Payment: 30% deposit to schedule, 40% at rough-in / midpoint, 30% on completion. Changes to scope are priced as written change orders. ${esc(u.business_name || "Contractor")} carries general liability insurance; certificate available on request.</p>
+        <p class="small mt">Valid for 30 days. 30% deposit to schedule, balance on completion.</p>
         <div class="grid c2 mt" style="margin-top:36px"><div>Accepted by: _______________________<div class="small">Client signature / date</div></div><div>${esc(u.name || "")}<div class="small">${esc(u.business_name || "")}</div></div></div>
       </div></div>`, { wide: true });
   }
@@ -479,11 +477,11 @@
     let active = Object.keys(cats)[0], result = null, timer;
     if (!S.jobs.length) await loadJobs();
     const openJobs = S.jobs.filter((j) => !["complete", "lost"].includes(j.status));
-    main().innerHTML = head("Calculators", `Local pricing for ${esc(S.pricing.region.name)}. Build a quantity takeoff, then push it into a job.`) + `
+    main().innerHTML = head("Calculators", esc(S.pricing.region.name)) + `
       <div class="grid side-l">
         <div class="card pad-0" style="padding:8px"><div class="calc-list" id="clist"></div></div>
         <div>
-          <div class="card"><div class="card-head"><h2 id="ctitle"></h2><span class="dim" style="font-size:12px">updates live</span></div><form id="cform" class="form-grid"></form></div>
+          <div class="card"><div class="card-head"><h2 id="ctitle"></h2></div><form id="cform" class="form-grid"></form></div>
           <div class="card" id="cres"></div>
         </div>
       </div>`;
@@ -518,7 +516,7 @@
             <button class="btn primary" id="addtojob">${ICON.plus} Add</button></div></div>
         <div class="table-wrap"><table><thead><tr><th>Item</th><th>Type</th><th class="num">Qty</th><th>Unit</th><th class="num">Unit cost</th><th class="num">Total</th></tr></thead>
           <tbody>${result.items.map((i) => `<tr><td>${esc(i.description)}</td><td><span class="cat ${i.category}">${i.category}</span></td><td class="num">${num(i.qty)}</td><td class="dim">${esc(i.unit)}</td><td class="num">${money2(i.unit_cost)}</td><td class="num">${money2(i.total)}</td></tr>`).join("")}</tbody></table></div>
-        <div class="grid c2 mt"><div>${totalsHtml(result.summary)}<div class="dim" style="font-size:11.5px;margin-top:6px">Before job factors (site conditions, trips). Set those on the job.</div></div>
+        <div class="grid c2 mt"><div>${totalsHtml(result.summary)}</div>
           <div>${competitorsHtml(result.competitors, result.summary.total)}</div></div>`;
       $("#addtojob").onclick = async () => {
         const v = $("#jobsel").value;
@@ -534,7 +532,7 @@
   // ------------------------------------------------------------ schedule
   async function pageSchedule() {
     if (!S.jobs.length) await loadJobs();
-    main().innerHTML = head("Schedule", "Site visits, work days, inspections and deliveries. Subscribe from your own calendar app below.",
+    main().innerHTML = head("Schedule", "",
       `<button class="btn primary" id="newev">${ICON.plus} New event</button>`) + `
       <div class="grid side"><div><div class="card" id="calcard"></div></div>
         <div><div class="card"><div class="card-head"><h3>Next up</h3></div><div id="upcoming"></div></div>
@@ -572,14 +570,12 @@
     const drawSync = () => {
       const url = `${location.origin}/calendar/${S.user.ics_token}.ics`;
       $("#sync").innerHTML = `<h3 class="mb">Link to your calendar</h3>
-        <p class="muted" style="font-size:13px">Subscribe once and every event here shows up in Google Calendar, Apple Calendar or Outlook on your phone. It refreshes on its own.</p>
         <div class="row"><div class="code grow" id="icsurl">${esc(url)}</div><button class="btn sm" id="copy">Copy</button></div>
         <ol class="steps mt">
           <li><b>Google Calendar:</b> Other calendars → <b>+</b> → <i>From URL</i> → paste.</li>
           <li><b>iPhone:</b> Settings → Calendar → Accounts → Add Subscribed Calendar → paste.</li>
           <li><b>Outlook:</b> Add calendar → Subscribe from web → paste.</li>
-        </ol>
-        <div class="banner mt"><b>Next step for the real build:</b> two-way Google Calendar sync (OAuth) so events created on his phone flow back here, plus SMS reminders to clients the day before a site visit.</div>`;
+        </ol>`;
       $("#copy").onclick = async () => { try { await navigator.clipboard.writeText(url); toast("Link copied", "ok"); } catch (_) { toast("Select and copy the link manually"); } };
     };
     const drawAll = () => { drawCal(); drawUpcoming(); };
@@ -634,12 +630,9 @@
     const overrides = { ...(S.user.price_overrides || {}) };
     const sections = { labor: "Billed labor rates ($ per man-hour, your margin included)", production: "Production rates (man-hours per unit of work)", job: "Job factors", conditions: "Site conditions (% added to labor)", competitors: "Competitor benchmarks (for the comparison card)", lumber: "Lumber", hardware: "Hardware & fasteners", drywall: "Drywall", trim: "Trim & doors", paint: "Paint", equipment: "Equipment & site protection", permits: "Permits (New Hanover County)", disposal: "Disposal", defaults: "Estimate defaults" };
     const mine = S.pricing.materials.filter((x) => !x.builtin);
-    main().innerHTML = head("Price book", `${esc(region.name)} · edit any number and it flows into every calculator`,
+    main().innerHTML = head("Price book", esc(region.name),
       `<button class="btn" id="addmat">${ICON.plus} Add material</button><button class="btn" id="reset">Reset built-ins</button><button class="btn primary" id="save">Save changes</button>`) + `
-      <div class="banner mb"><b>Draft numbers.</b> These are planning figures in the ballpark for the Wilmington market. Verify against real quotes (Lowe's, 84 Lumber, Builders FirstSource) before sending a client anything.</div>
-      <div class="card mb"><h3 class="mb">Local notes</h3><ul class="steps">${region.notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>
-        <div class="row wrap mt"><span class="meta-chip">Sales tax <b>${region.sales_tax_pct}%</b></span><span class="meta-chip">Wind zone <b>${region.wind_zone_mph} mph</b></span><span class="meta-chip">Frost depth <b>${region.frost_depth_in} in</b></span></div></div>
-      <div class="card pad-0 mb"><div class="card-head" style="padding:14px 18px 0"><h3>My materials</h3><span class="dim" style="font-size:12px">Anything the built-ins don't cover. These show up in the "From price book" picker on every job.</span></div>
+      <div class="card pad-0 mb"><div class="card-head" style="padding:14px 18px 0"><h3>My materials</h3></div>
         ${mine.length ? `<table><thead><tr><th>Item</th><th>Section</th><th>Unit</th><th class="num">Cost</th><th></th></tr></thead><tbody>${mine.map((x) => `<tr>
           <td><input type="text" data-mid="${x.db_id}" data-f="label" value="${esc(x.label)}"></td>
           <td><input type="text" data-mid="${x.db_id}" data-f="section" value="${esc(x.section)}" style="width:130px"></td>
@@ -650,7 +643,7 @@
         <div class="card pad-0"><div class="card-head" style="padding:14px 18px 0"><h3>${label}</h3></div>
           <table><tbody>${Object.entries(book[sec]).map(([key, v]) => {
             const fields = Object.keys(v).filter((k) => k !== "label");
-            return `<tr><td>${esc(v.label)}${v.unit ? ` <span class="dim">/ ${esc(v.unit)}</span>` : ""}<div class="dim mono" style="font-size:10.5px">${sec}.${key}</div></td>
+            return `<tr><td>${esc(v.label)}${v.unit ? ` <span class="dim">/ ${esc(v.unit)}</span>` : ""}</td>
               <td class="right">${fields.map((f) => `<span class="dim" style="font-size:11px;margin-left:8px">${fields.length > 1 ? f : ""}</span> <input class="price-input ${overrides[`${sec}.${key}`]?.[f] !== undefined ? "changed" : ""}" type="number" step="any" data-path="${sec}.${key}" data-f="${f}" value="${v[f]}">`).join("")}</td></tr>`; }).join("")}
           </tbody></table></div>`).join("")}</div>`;
     const dirty = {};
@@ -695,7 +688,7 @@
   // ------------------------------------------------------------ settings
   function pageSettings() {
     const u = S.user;
-    main().innerHTML = head("Settings", "Business profile and estimate defaults. These print on proposals.") + `
+    main().innerHTML = head("Settings") + `
       <div class="grid c2">
         <div class="card"><h3 class="mb">Business</h3>
           <form id="bf" class="stack">
@@ -714,7 +707,6 @@
                 <label class="field"><span>Contingency %</span><input name="contingency_pct" type="number" step="0.5" value="${u.contingency_pct}"></label>
                 <label class="field"><span>Sales tax % (materials)</span><input name="tax_pct" type="number" step="0.25" value="${u.tax_pct}"></label>
               </div>
-              <p class="dim" style="font-size:12px">Labor is billed by the man-hour at the rates in the price book, with your margin built in, so markup only touches materials, equipment and disposal. Typical: 15–30%. Any job can override these on its own page.</p>
               <button class="btn primary" style="align-self:flex-start">Save defaults</button>
             </form></div>
           <div class="card"><h3 class="mb">Account</h3>
@@ -723,7 +715,6 @@
               <label class="field"><span>New password</span><input name="new_password" type="password" minlength="8" autocomplete="new-password" placeholder="8+ characters"></label>
               <div class="row"><button class="btn">Change password</button><button class="btn ghost" type="button" id="rotate">Reset calendar link</button></div>
             </form>
-            <p class="dim mt" style="font-size:12px">Resetting the calendar link disconnects any calendar app that subscribed with the old one.</p></div>
         </div></div>`;
     const save = (form, msg) => async (e) => { e.preventDefault(); const { user } = await api("/api/settings", { method: "PUT", body: formData(form) }); S.user = user; toast(msg, "ok"); render(); };
     $("#bf").onsubmit = save($("#bf"), "Business saved");
