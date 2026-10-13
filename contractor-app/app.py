@@ -12,9 +12,10 @@ import sqlite3
 from datetime import datetime, timedelta, date
 from functools import wraps
 
-from flask import Flask, g, jsonify, request, session, send_from_directory, Response, abort
+from flask import Flask, g, jsonify, request, session, send_from_directory, send_file, Response, abort
 from werkzeug.security import generate_password_hash, check_password_hash
 
+import backup
 import pricing
 
 BASE = os.path.dirname(os.path.abspath(__file__))
@@ -768,6 +769,42 @@ def dashboard():
                    recent_jobs=sorted(jobs, key=lambda j: j["updated_at"], reverse=True)[:5])
 
 
+# ------------------------------------------------------------------ backups
+
+@app.get("/api/backup/status")
+@login_required
+def backup_status():
+    last = backup.latest(DATA_DIR)
+    return jsonify(last=datetime.fromtimestamp(os.path.getmtime(last)).isoformat(timespec="minutes") if last else None,
+                   count=len([f for f in os.listdir(os.path.join(DATA_DIR, "backups")) if f.endswith(".gz")]) if os.path.isdir(os.path.join(DATA_DIR, "backups")) else 0,
+                   offsite=bool(os.environ.get("BACKUP_S3_BUCKET")), hour=os.environ.get("BACKUP_HOUR", "3"))
+
+
+@app.post("/api/backup/now")
+@login_required
+def backup_now():
+    try:
+        path = backup.snapshot(DB_PATH, DATA_DIR)
+    except Exception as e:
+        return jsonify(error=f"Backup failed: {e}"), 500
+    return jsonify(ok=True, file=os.path.basename(path))
+
+
+@app.get("/api/backup/download")
+@login_required
+def backup_download():
+    """A fresh, consistent copy of the whole database as a plain .db file."""
+    import tempfile
+    tmp = os.path.join(tempfile.gettempdir(), f"contractor-backup-{secrets.token_hex(4)}.db")
+    src = sqlite3.connect(DB_PATH)
+    dst = sqlite3.connect(tmp)
+    with dst:
+        src.backup(dst)
+    dst.close()
+    src.close()
+    return send_file(tmp, as_attachment=True, download_name=f"contractor-app-{date.today().isoformat()}.db", mimetype="application/x-sqlite3")
+
+
 # ------------------------------------------------------------------ seed
 
 def seed_demo(conn):
@@ -877,6 +914,7 @@ def seed_demo(conn):
 
 
 init_db()
+backup.start_scheduler(DB_PATH, DATA_DIR)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))

@@ -924,11 +924,19 @@
               <label class="field"><span>New password</span><input name="new_password" type="password" minlength="8" autocomplete="new-password" placeholder="8+ characters"></label>
               <div class="row"><button class="btn">Change password</button><button class="btn ghost" type="button" id="rotate">Reset calendar link</button></div>
             </form>
+          </div>
+          <div class="card"><h3 class="mb">Backups</h3>
+            <div id="bkinfo" class="muted" style="font-size:13px">Checking…</div>
+            <div class="row mt"><a class="btn" href="/api/backup/download">${ICON.ext} Download a copy</a><button class="btn ghost" id="bknow">Back up now</button></div>
+          </div>
         </div></div>`;
     const save = (form, msg) => async (e) => { e.preventDefault(); const { user } = await api("/api/settings", { method: "PUT", body: formData(form) }); S.user = user; toast(msg, "ok"); render(); };
     $("#bf").onsubmit = save($("#bf"), "Business saved");
     $("#df").onsubmit = save($("#df"), "Defaults saved");
     $("#pf").onsubmit = async (e) => { e.preventDefault(); const pw = $("[name=new_password]").value; if (pw.length < 8) return toast("Password must be 8+ characters", "err"); await api("/api/settings", { method: "PUT", body: { new_password: pw } }); toast("Password changed", "ok"); $("[name=new_password]").value = ""; };
+    const bk = async () => { try { const b = await api("/api/backup/status"); $("#bkinfo").innerHTML = `Nightly at ${esc(b.hour)}:00 server time · ${b.count} kept on disk · last: ${b.last ? fmtDT(b.last) : "none yet"}${b.offsite ? " · also copied off-site" : ""}`; } catch (_) { $("#bkinfo").textContent = "Status unavailable"; } };
+    bk();
+    $("#bknow").onclick = async () => { try { await api("/api/backup/now", { method: "POST" }); toast("Backup written", "ok"); bk(); } catch (err) { toast(err.message, "err"); } };
     $("#rotate").onclick = async () => { const { user } = await api("/api/settings", { method: "PUT", body: { rotate_ics_token: true } }); S.user = user; toast("Calendar link reset"); };
   }
 

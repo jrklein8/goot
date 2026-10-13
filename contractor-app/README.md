@@ -112,6 +112,18 @@ GitHub Pages can't host this (it needs a Python server), but Railway can:
 Every push to `main` redeploys. Change the demo password (or delete the
 demo account) before giving the link to anyone.
 
+### Backups
+
+The app snapshots its database every night at 3:00 (server time) into
+`DATA_DIR/backups/`, keeps the last 14, and Settings has a **Download a
+copy** button for an on-demand copy. For an off-site copy, point it at any
+S3-compatible bucket (AWS S3, Cloudflare R2, Supabase Storage): add
+`boto3` to `requirements.txt` and set `BACKUP_S3_BUCKET`,
+`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` and, for R2/Supabase,
+`BACKUP_S3_ENDPOINT`. `BACKUP_HOUR` changes the hour; `BACKUP_HOUR=off`
+disables the nightly job. To restore, stop the app, replace `app.db` on
+the volume with an unzipped snapshot, and start it again.
+
 ## Obvious next steps for a real build
 
 - Two-way Google Calendar sync via OAuth (events made on his phone flow back).
