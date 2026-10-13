@@ -65,6 +65,20 @@
     return { el: bg, close };
   }
 
+  function askNumber(title, text, initial) {
+    return new Promise((res) => {
+      const m = modal(`<h2>${esc(title)}</h2><p class="muted">${esc(text)}</p><input type="number" step="any" id="askn" value="${esc(initial)}" style="max-width:160px">
+        <div class="actions"><button class="btn" data-close>Cancel</button><button class="btn primary" id="ok">OK</button></div>`);
+      const inp = $("#askn", m.el);
+      setTimeout(() => { inp.focus(); inp.select(); }, 30);
+      const ok = () => { const v = parseFloat(inp.value); m.close(); res(v > 0 ? v : null); };
+      $("#ok", m.el).onclick = ok;
+      inp.onkeydown = (e) => { if (e.key === "Enter") ok(); };
+      m.el.addEventListener("click", (e) => { if (e.target === m.el) res(null); });
+      $("[data-close]", m.el).addEventListener("click", () => res(null));
+    });
+  }
+
   function confirmDlg(text) {
     return new Promise((res) => {
       const m = modal(`<h2>Are you sure?</h2><p class="muted">${esc(text)}</p>
@@ -741,21 +755,22 @@
         if (done) return; done = true;
         const val = inp.value.trim();
         if (!save || !val || val === orig) { el.textContent = display(orig); if (onDone) onDone(); return; }
+        let suffix = "";
         if (saver) await saver(val);
         else {
           const extra = {};
           const [sec, key] = id.split(".");
           const baseUnit = S.pricing.book[sec]?.[key]?.base_unit;
           if (field === "unit" && baseUnit === "lf" && val !== "lf") {
-            const ft = parseFloat(prompt("Feet per piece? (so the calculators can convert footage to pieces)", String(S.pricing.book[sec][key].piece_ft || 8)));
-            if (ft > 0) extra.piece_ft = ft;
+            const ft = await askNumber("Feet per piece", "So the calculators can turn footage into pieces.", S.pricing.book[sec][key].piece_ft || 8);
+            if (ft) { extra.piece_ft = ft; suffix = ` (${ft} ft)`; }
           }
           const merged = { ...(S.user.price_overrides || {}), [id]: { ...((S.user.price_overrides || {})[id] || {}), [field]: val, ...extra } };
           const { user } = await api("/api/settings", { method: "PUT", body: { price_overrides: merged } });
           S.user = user;
         }
         await loadPricing();
-        el.textContent = display(val);
+        el.textContent = display(val) + suffix;
         if (onDone) onDone();
         toast(field === "unit" ? "Unit changed" : "Renamed", "ok");
       };
