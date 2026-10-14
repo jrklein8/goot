@@ -216,7 +216,7 @@
         <div>
           ${d.unscheduled.length ? `<div class="card pad-0 unsched"><div class="card-head" style="padding:14px 18px 0"><h3>Not on the calendar yet</h3><span class="dim">${d.unscheduled.length} open job${d.unscheduled.length === 1 ? "" : "s"} · ${money(d.unscheduled.reduce((a, j) => a + j.total, 0))}</span></div>
             <table><tbody>${d.unscheduled.map((j) => `<tr class="clickable" data-id="${j.id}"><td><div style="font-weight:600">${esc(j.title)}</div><div class="dim mono" style="font-size:11.5px">${esc(j.job_no)} · ${esc(j.client_name || "")}</div></td><td><span class="badge ${j.status}">${STATUS_LABEL[j.status]}</span></td><td class="num">${money(j.total)}</td><td class="right"><button class="btn xs" data-sched="${j.id}">Schedule</button></td></tr>`).join("")}</tbody></table></div>` : ""}
-          ${d.months.map(monthPanel).join("")}
+          ${[...d.months.filter((m) => !m.is_past), ...d.months.filter((m) => m.is_past)].map(monthPanel).join("")}
         </div>
         <div>
           <div class="card">
