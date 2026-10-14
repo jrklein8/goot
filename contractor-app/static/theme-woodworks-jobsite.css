@@ -132,10 +132,18 @@ html[data-theme="woodworks-jobsite"] th { font-weight: 800; letter-spacing: 0.16
 html[data-theme="woodworks-jobsite"] tr.group-head td { font-weight: 800; font-size: 12.5px; letter-spacing: 0.06em; color: var(--sand); }
 html[data-theme="woodworks-jobsite"] .totals .line.grand span { font-weight: 800; letter-spacing: 0.16em; font-size: 11.5px; }
 html[data-theme="woodworks-jobsite"] .totals .line.grand b { font-weight: 900; color: var(--accent-2); }
-html[data-theme="woodworks-jobsite"] .brand::before { border-radius: 0; box-shadow: 5px 5px 0 #0d0905; }
+html[data-theme="woodworks-jobsite"] .brand::before {
+  border-radius: 18px;
+  background: radial-gradient(circle at center, transparent 62%, rgba(29, 21, 15, 0.45) 100%), url("/static/ash-elm-logo.png") center / cover no-repeat;
+  box-shadow: 0 0 0 1px rgba(233, 201, 160, 0.18), 0 0 0 6px rgba(29, 21, 15, 0.9), 0 14px 30px rgba(0, 0, 0, 0.55);
+}
 html[data-theme="woodworks-jobsite"] .sidebar { border-left-color: var(--rust); }
 html[data-theme="woodworks-jobsite"] .page-head::after { background: repeating-linear-gradient(135deg, var(--rust) 0 10px, #1a110a 10px 20px); }
-html[data-theme="woodworks-jobsite"] .auth .card::before { border-radius: 0; box-shadow: 6px 6px 0 #0d0905; }
+html[data-theme="woodworks-jobsite"] .auth .card::before {
+  border-radius: 22px;
+  background: radial-gradient(circle at center, transparent 62%, rgba(29, 21, 15, 0.45) 100%), url("/static/ash-elm-logo.png") center / cover no-repeat;
+  box-shadow: 0 0 0 1px rgba(233, 201, 160, 0.18), 0 0 0 8px rgba(29, 21, 15, 0.9), 0 18px 40px rgba(0, 0, 0, 0.55);
+}
 html[data-theme="woodworks-jobsite"] .card { background: #1d150f; }
 html[data-theme="woodworks-jobsite"] label.field > span { font-weight: 700; letter-spacing: 0.14em; font-size: 10.5px; }
 html[data-theme="woodworks-jobsite"] .cal .dow { font-weight: 800; letter-spacing: 0.16em; }
