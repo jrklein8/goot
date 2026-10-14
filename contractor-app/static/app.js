@@ -177,6 +177,7 @@
   }
 
   // ------------------------------------------------------------ dashboard
+  let dashMonth = null;   // a month key when the bar strip is filtering the dashboard
   async function pageDashboard() {
     const hr = new Date().getHours(), first = (S.user.name || "").split(" ")[0];
     const hello = `${hr < 12 ? "Morning" : hr < 17 ? "Afternoon" : "Evening"}${first ? `, ${esc(first)}` : ""}.`;
@@ -185,21 +186,29 @@
     $("#newjob").onclick = () => jobModal();
     $("#newev").onclick = () => eventModal();
     const d = await api("/api/dashboard");
-    const totalCount = Object.values(d.by_status).reduce((a, v) => a + v.count, 0) || 1;
     const openKey = "months-open";
     let open = new Set();
     try { open = new Set(JSON.parse(localStorage.getItem(openKey) || "null") || [d.months.find((m) => m.is_current).key]); } catch (_) { open = new Set([d.months.find((m) => m.is_current).key]); }
     const saveOpen = () => { try { localStorage.setItem(openKey, JSON.stringify([...open])); } catch (_) { /* ignore */ } };
     const peak = Math.max(1, ...d.months.map((m) => m.booked + m.quoted + m.done));
     const bar = (m) => { const h = (v) => `${((v / peak) * 100).toFixed(1)}%`; return `
-      <div class="mbar ${m.is_current ? "current" : ""} ${m.is_past ? "past" : ""}" data-month="${m.key}" title="${esc(m.label)}">
+      <div class="mbar ${m.is_current ? "current" : ""} ${m.is_past ? "past" : ""} ${dashMonth === m.key ? "selected" : dashMonth ? "dimmed" : ""}" data-month="${m.key}" title="${dashMonth === m.key ? "Click to show all months" : `Show only ${esc(m.label)}`}">
         <div class="mbar-stack"><span class="seg done" style="height:${h(m.done)}"></span><span class="seg booked" style="height:${h(m.booked)}"></span><span class="seg quoted" style="height:${h(m.quoted)}"></span></div>
         <div class="mbar-label">${m.short}</div><div class="mbar-val">${m.booked + m.quoted + m.done ? money(m.booked + m.quoted + m.done) : "—"}</div></div>`; };
     const monthRow = (m) => `<tr class="clickable" data-id="${m.id}"><td><div style="font-weight:600">${esc(m.title)}</div><div class="dim mono" style="font-size:11.5px">${esc(m.job_no)} · ${esc(m.client_name || "")}</div></td>
       <td><span class="badge ${m.status}">${STATUS_LABEL[m.status]}</span></td>
       <td class="dim">${fmtDate(m.first_day)}${m.last_day !== m.first_day ? ` – ${fmtDate(m.last_day)}` : ""}</td>
       <td class="num">${m.site_days} day${m.site_days === 1 ? "" : "s"}</td><td class="num">${money(m.total)}</td></tr>`;
-    const monthPanel = (m) => { const isOpen = open.has(m.key); const n = m.jobs.length;
+    const sel = dashMonth ? d.months.find((m) => m.key === dashMonth) : null;
+    let byStatus = d.by_status, upcoming = d.upcoming;
+    if (sel) {
+      byStatus = Object.fromEntries(S.pricing.statuses.map((st) => [st, { count: 0, value: 0 }]));
+      sel.jobs.forEach((j) => { byStatus[j.status].count += 1; byStatus[j.status].value += j.total; });
+      const [y, mo] = sel.key.split("-").map(Number);
+      const endKey = `${mo === 12 ? y + 1 : y}-${String(mo === 12 ? 1 : mo + 1).padStart(2, "0")}-01`;
+      try { upcoming = (await api(`/api/events?start=${sel.key}&end=${endKey}`)).events.slice(0, 14); } catch (_) { upcoming = []; }
+    }
+    const monthPanel = (m) => { const isOpen = open.has(m.key) || dashMonth === m.key; const n = m.jobs.length;
       const summary = m.is_past ? `${n} job${n === 1 ? "" : "s"} · closed out ${money(m.done)}${m.booked ? ` · ${money(m.booked)} still open` : ""}`
         : `${n} job${n === 1 ? "" : "s"} · ${money(m.booked)} booked${m.quoted ? ` · ${money(m.quoted)} waiting on a yes` : ""} · ${m.site_days} site day${m.site_days === 1 ? "" : "s"}`;
       return `<div class="card pad-0 month ${isOpen ? "open" : ""} ${m.is_current ? "current" : ""}">
@@ -209,31 +218,33 @@
     $("#dash").className = "";
     $("#dash").innerHTML = `
       <div class="card">
-        <div class="card-head"><h3>Next six months</h3><div class="legend"><span><i class="seg-key booked"></i>Booked</span><span><i class="seg-key quoted"></i>Waiting on a yes</span><span><i class="seg-key done"></i>Done</span></div></div>
+        <div class="card-head"><h3>${dashMonth ? esc(d.months.find((m) => m.key === dashMonth).label) : "Next six months"}</h3><div class="row">${dashMonth ? `<button class="btn xs" id="clearmonth">✕ Show all months</button>` : ""}<div class="legend"><span><i class="seg-key booked"></i>Booked</span><span><i class="seg-key quoted"></i>Waiting on a yes</span><span><i class="seg-key done"></i>Done</span></div></div></div>
         <div class="mbars">${d.months.map(bar).join("")}</div>
       </div>
       <div class="grid side mt">
         <div>
-          ${d.unscheduled.length ? `<div class="card pad-0 unsched"><div class="card-head" style="padding:14px 18px 0"><h3>Not on the calendar yet</h3><span class="dim">${d.unscheduled.length} open job${d.unscheduled.length === 1 ? "" : "s"} · ${money(d.unscheduled.reduce((a, j) => a + j.total, 0))}</span></div>
+          ${d.unscheduled.length && !dashMonth ? `<div class="card pad-0 unsched"><div class="card-head" style="padding:14px 18px 0"><h3>Not on the calendar yet</h3><span class="dim">${d.unscheduled.length} open job${d.unscheduled.length === 1 ? "" : "s"} · ${money(d.unscheduled.reduce((a, j) => a + j.total, 0))}</span></div>
             <table><tbody>${d.unscheduled.map((j) => `<tr class="clickable" data-id="${j.id}"><td><div style="font-weight:600">${esc(j.title)}</div><div class="dim mono" style="font-size:11.5px">${esc(j.job_no)} · ${esc(j.client_name || "")}</div></td><td><span class="badge ${j.status}">${STATUS_LABEL[j.status]}</span></td><td class="num">${money(j.total)}</td><td class="right"><button class="btn xs" data-sched="${j.id}">Schedule</button></td></tr>`).join("")}</tbody></table></div>` : ""}
-          ${[...d.months.filter((m) => !m.is_past), ...d.months.filter((m) => m.is_past)].map(monthPanel).join("")}
+          ${(dashMonth ? [sel] : [...d.months.filter((m) => !m.is_past), ...d.months.filter((m) => m.is_past)]).map(monthPanel).join("")}
         </div>
         <div>
           <div class="card">
-            <div class="card-head"><h3>Job pipeline</h3><a href="#jobs">All jobs</a></div>
-            <div class="pipe">${Object.entries(d.by_status).map(([s, v]) => `<span class="c-${s}" style="width:${(v.count / totalCount) * 100}%" title="${STATUS_LABEL[s]}: ${v.count}"></span>`).join("")}</div>
-            <div class="legend">${Object.entries(d.by_status).filter(([, v]) => v.count).map(([s, v]) => `<span><i class="c-${s}"></i>${STATUS_LABEL[s]} <b>${v.count}</b> <span class="dim">${money(v.value)}</span></span>`).join("")}</div>
+            <div class="card-head"><h3>${sel ? `${esc(sel.short)} jobs by status` : "Job pipeline"}</h3><a href="#jobs">All jobs</a></div>
+            ${(() => { const tc = Object.values(byStatus).reduce((a, v) => a + v.count, 0) || 1; return `<div class="pipe">${Object.entries(byStatus).map(([s, v]) => `<span class="c-${s}" style="width:${(v.count / tc) * 100}%" title="${STATUS_LABEL[s]}: ${v.count}"></span>`).join("")}</div>`; })()}
+            <div class="legend">${Object.entries(byStatus).filter(([, v]) => v.count).map(([s, v]) => `<span><i class="c-${s}"></i>${STATUS_LABEL[s]} <b>${v.count}</b> <span class="dim">${money(v.value)}</span></span>`).join("") || `<span class="dim">Nothing scheduled this month.</span>`}</div>
           </div>
           <div class="card">
-            <div class="card-head"><h3>Coming up</h3><a href="#schedule">Calendar</a></div>
-            ${agenda(d.upcoming)}
+            <div class="card-head"><h3>${sel ? `On the calendar in ${esc(sel.short)}` : "Coming up"}</h3><a href="#schedule">Calendar</a></div>
+            ${agenda(upcoming)}
           </div>
         </div>
       </div>`;
     wireJobRows();
     wireAgenda();
     $$("[data-toggle-month]").forEach((h) => (h.onclick = () => { const k = h.dataset.toggleMonth; if (open.has(k)) open.delete(k); else open.add(k); saveOpen(); pageDashboard(); }));
-    $$(".mbar").forEach((b) => (b.onclick = () => { open.add(b.dataset.month); saveOpen(); pageDashboard(); setTimeout(() => $(`[data-toggle-month="${b.dataset.month}"]`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 80); }));
+    $$(".mbar").forEach((b) => (b.onclick = () => { dashMonth = dashMonth === b.dataset.month ? null : b.dataset.month; pageDashboard(); }));
+    const cm = $("#clearmonth");
+    if (cm) cm.onclick = () => { dashMonth = null; pageDashboard(); };
     $$("[data-sched]").forEach((b) => (b.onclick = (e) => { e.stopPropagation(); const j = d.unscheduled.find((x) => x.id === +b.dataset.sched); eventModal({ job_id: j.id, location: j.address, title: j.title }, () => pageDashboard()); }));
   }
 

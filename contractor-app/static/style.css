@@ -209,6 +209,9 @@ select.status-select { width: auto; padding: 4px 26px 4px 8px; font-size: 12px; 
 .mbar.past { opacity: 0.6; }
 .mbar-val { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 .mbar:hover .mbar-stack { border-color: var(--accent); }
+.mbar.selected .mbar-stack { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-dim); }
+.mbar.selected .mbar-label { color: var(--accent); }
+.mbar.dimmed { opacity: 0.35; }
 .month { margin-top: 14px; }
 .month-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px; cursor: pointer; flex-wrap: wrap; }
 .month-head:hover { background: var(--surface-2); }
