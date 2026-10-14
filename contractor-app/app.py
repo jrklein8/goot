@@ -776,9 +776,64 @@ def dashboard():
         (u["id"], today)).fetchall()
     pipeline = sum(j["summary"]["total"] for j in jobs if j["status"] in ("estimating", "quoted"))
     booked = sum(j["summary"]["total"] for j in jobs if j["status"] in ("approved", "in_progress"))
+    months, unscheduled = month_board(u["id"], jobs)
     return jsonify(by_status=by_status, pipeline_value=round(pipeline, 2), booked_value=round(booked, 2),
                    job_count=len(jobs), upcoming=[dict(e) for e in upcoming],
-                   recent_jobs=sorted(jobs, key=lambda j: j["updated_at"], reverse=True)[:5])
+                   recent_jobs=sorted(jobs, key=lambda j: j["updated_at"], reverse=True)[:5],
+                   months=months, unscheduled=unscheduled)
+
+
+def _add_months(d, n):
+    y, m = d.year + (d.month - 1 + n) // 12, (d.month - 1 + n) % 12 + 1
+    return date(y, m, 1)
+
+
+def month_board(uid, jobs):
+    """Six months (last month + this + next four): which jobs have work scheduled, what that's worth,
+    how many site days. Plus the open jobs with nothing on the calendar yet."""
+    today = date.today()
+    first = date(today.year, today.month, 1)
+    months = [_add_months(first, i) for i in range(-1, 5)]
+    window_start, window_end = months[0].isoformat(), _add_months(first, 5).isoformat()
+    by_id = {j["id"]: j for j in jobs}
+    rows = db().execute("SELECT job_id, start, type, title FROM events WHERE user_id=? AND start >= ? AND start < ? AND job_id IS NOT NULL ORDER BY start",
+                        (uid, window_start, window_end)).fetchall()
+    per_month = {m.isoformat(): {} for m in months}        # month -> job_id -> set(dates)
+    for r in rows:
+        if r["job_id"] not in by_id:
+            continue
+        d = r["start"][:10]
+        mkey = d[:7] + "-01"
+        if mkey in per_month:
+            per_month[mkey].setdefault(r["job_id"], set()).add(d)
+    out = []
+    for m in months:
+        key = m.isoformat()
+        entries = []
+        booked = quoted = done = 0.0
+        for jid, days in per_month[key].items():
+            j = by_id[jid]
+            total = j["summary"]["total"]
+            if j["status"] in ("approved", "in_progress"):
+                booked += total
+            elif j["status"] in ("lead", "estimating", "quoted"):
+                quoted += total
+            elif j["status"] == "complete":
+                done += total
+            sd = sorted(days)
+            entries.append({"id": jid, "job_no": j["job_no"], "title": j["title"], "client_name": j["client_name"], "status": j["status"],
+                            "total": total, "site_days": len(sd), "first_day": sd[0], "last_day": sd[-1]})
+        entries.sort(key=lambda e: e["first_day"])
+        out.append({"key": key, "label": m.strftime("%B %Y"), "short": m.strftime("%b"), "is_current": m == first, "is_past": m < first,
+                    "jobs": entries, "booked": round(booked, 2), "quoted": round(quoted, 2), "done": round(done, 2),
+                    "site_days": sum(e["site_days"] for e in entries)})
+    scheduled_future = {r["job_id"] for r in db().execute("SELECT DISTINCT job_id FROM events WHERE user_id=? AND start >= ? AND job_id IS NOT NULL",
+                                                           (uid, today.isoformat())).fetchall()}
+    unscheduled = [{"id": j["id"], "job_no": j["job_no"], "title": j["title"], "client_name": j["client_name"], "status": j["status"],
+                    "total": j["summary"]["total"], "address": j["address"]}
+                   for j in jobs if j["status"] in ("lead", "estimating", "quoted", "approved", "in_progress") and j["id"] not in scheduled_future]
+    unscheduled.sort(key=lambda j: JOB_STATUSES.index(j["status"]))
+    return out, unscheduled
 
 
 # ------------------------------------------------------------------ backups
@@ -912,7 +967,6 @@ def seed_demo(conn):
     ev(j0, "Half hall: tape + 2nd coat", "work", 2, 8, 3, "Justin's place")
     ev(j0, "Half hall: 3rd coat, sand, hang door", "work", 3, 8, 4, "Justin's place")
     ev(j0, "Half hall: prime + paint", "work", 4, 8, 5, "Justin's place")
-    ev(j4, "Site visit + measure porch", "site_visit", 1, 9, 1, "1308 Market St", "Bring moisture meter, check ledger + joists")
     ev(j3, "Frame garage partition wall", "work", 2, 7, 8, "815 Carolina Beach Rd", "PT plate, Tapcons, 5/8 board on house side")
     ev(j3, "Lumber + drywall delivery (84 Lumber)", "delivery", 2, 7, 1, "815 Carolina Beach Rd")
     ev(j3, "Hang + tape drywall", "work", 3, 7, 8, "815 Carolina Beach Rd")
@@ -920,8 +974,19 @@ def seed_demo(conn):
     ev(j1, "Deck proposal walkthrough with Sarah", "meeting", 3, 17, 1, "412 Pine Grove Dr")
     ev(j2, "Measure bonus room, confirm door swing", "site_visit", 5, 10, 1, "2207 Oleander Dr")
     ev(None, "Shop day: sharpen blades, truck oil change", "other", 8, 8, 4, "Shop")
-    ev(j1, "Deck footing inspection", "inspection", 12, 13, 1, "412 Pine Grove Dr", "COAST inspection window 1-3pm")
-    ev(j1, "Deck build week", "work", 12, 7, 9, "412 Pine Grove Dr", "Pending client approval", all_day=1)
+    # next month: the deck build, if Sarah says yes
+    nm = (date(today.year + (today.month // 12), today.month % 12 + 1, 2) - today).days
+    ev(j1, "Deck footing inspection", "inspection", nm, 13, 1, "412 Pine Grove Dr", "COAST inspection window 1-3pm")
+    for i, t in enumerate(["Deck: footings + ledger", "Deck: frame", "Deck: decking", "Deck: rail + stairs"]):
+        ev(j1, t, "work", nm + i, 7, 9, "412 Pine Grove Dr", "Pending client approval")
+    ev(j1, "Composite delivery (Builders FirstSource)", "delivery", nm, 7, 1, "412 Pine Grove Dr")
+    # the month after: bonus room finish-out
+    m2 = (date(today.year + ((today.month + 1) // 12), (today.month + 1) % 12 + 1, 1) - today).days
+    ev(j2, "Bonus room: frame closet + hall wall", "work", m2, 7, 8, "2207 Oleander Dr")
+    ev(j2, "Bonus room: hang + tape", "work", m2 + 1, 7, 8, "2207 Oleander Dr")
+    ev(j2, "Bonus room: 2nd + 3rd coat", "work", m2 + 2, 8, 4, "2207 Oleander Dr")
+    ev(j2, "Bonus room: trim + doors", "work", m2 + 6, 7, 8, "2207 Oleander Dr")
+    ev(j2, "Bonus room: prime + paint", "work", m2 + 7, 7, 8, "2207 Oleander Dr")
     conn.commit()
 
 

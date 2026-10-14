@@ -195,6 +195,27 @@ select.status-select { width: auto; padding: 4px 26px 4px 8px; font-size: 12px; 
 .pct-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
 .pct-row label.field span { font-size: 11px; }
 
+/* ---------- month board ---------- */
+.mbars { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 10px; align-items: end; height: 150px; }
+.mbar { display: flex; flex-direction: column; align-items: center; justify-content: flex-end; height: 100%; cursor: pointer; gap: 6px; }
+.mbar-stack { width: 100%; max-width: 72px; flex: 1; display: flex; flex-direction: column-reverse; justify-content: flex-start; background: var(--bg-2); border: 1px solid var(--border); }
+.mbar-stack .seg { display: block; width: 100%; }
+.seg.booked, .seg-key.booked { background: var(--accent); }
+.seg.quoted, .seg-key.quoted { background: var(--accent-dim); box-shadow: inset 0 0 0 1px var(--accent); }
+.seg.done, .seg-key.done { background: var(--muted); }
+.seg-key { display: inline-block; width: 9px; height: 9px; margin-right: 6px; vertical-align: -1px; }
+.mbar-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-2); }
+.mbar.current .mbar-label { color: var(--accent); }
+.mbar.past { opacity: 0.6; }
+.mbar-val { font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.mbar:hover .mbar-stack { border-color: var(--accent); }
+.month { margin-top: 14px; }
+.month-head { display: flex; align-items: center; gap: 10px; padding: 14px 18px; cursor: pointer; flex-wrap: wrap; }
+.month-head:hover { background: var(--surface-2); }
+.month-head .month-sum { margin-left: auto; font-size: 12.5px; }
+.month.current .month-head h3 { color: var(--accent); }
+.unsched { margin-bottom: 14px; }
+
 /* ---------- favorites ---------- */
 .star { background: none; border: none; color: var(--muted); font-size: 16px; line-height: 1; cursor: pointer; padding: 2px 4px; }
 .star:hover { color: var(--accent-2); }
